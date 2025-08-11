@@ -14,7 +14,7 @@ import { Plus, Truck, RefreshCw, FileText, AlertCircle, Wifi, Menu, X, Calendar,
 import Pengiriman from './components/Pengiriman';
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { supabase } from './lib/supabaseClient';
+import { supabase } from './lib/supabase';
 
 function App() {
   const { notes, loading, error, createNote, updateNote, removeNote, getStats, refreshNotes } = useDeliveryNotes();
