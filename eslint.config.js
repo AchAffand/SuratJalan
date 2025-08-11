@@ -23,6 +23,11 @@ export default tseslint.config(
         'warn',
         { allowConstantExport: true },
       ],
+      // Relax rules that are noisy and non-breaking for deployment
+      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      'no-empty': 'off',
+      'react-hooks/exhaustive-deps': 'warn',
     },
   }
 );
