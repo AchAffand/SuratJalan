@@ -93,6 +93,21 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
     }
   };
 
+  const disableWebPush = async () => {
+    try {
+      if (!('serviceWorker' in navigator)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        try { await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint); } catch {}
+        await sub.unsubscribe();
+      }
+      alert('Push notification dimatikan untuk perangkat ini.');
+    } catch (err) {
+      console.error('Disable web push error', err);
+    }
+  };
+
   // Generate notifications based on delivery data
   useEffect(() => {
     const newNotifications: Notification[] = [];
@@ -673,6 +688,20 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
                   className="px-3 py-1 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
                 >
                   Tandai Semua Dibaca
+                </button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={enableWebPush}
+                  className="flex-1 px-3 py-1 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 transition-colors"
+                >
+                  Aktifkan Push
+                </button>
+                <button
+                  onClick={disableWebPush}
+                  className="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors"
+                >
+                  Matikan Push
                 </button>
               </div>
             </div>
