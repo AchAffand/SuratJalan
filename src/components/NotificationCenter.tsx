@@ -56,6 +56,16 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
 
   // Helpers for Web Push subscription
   const urlBase64ToUint8Array = (base64String: string) => {
+    // Support hex strings too (fallback if user provides hex instead of base64-url)
+    const isHex = /^[0-9a-fA-F]+$/.test(base64String.replace(/^0x/, '')) && base64String.replace(/^0x/, '').length % 2 === 0;
+    if (isHex) {
+      const hex = base64String.replace(/^0x/, '');
+      const bytes = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < hex.length; i += 2) {
+        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+      }
+      return bytes;
+    }
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
     const rawData = atob(base64);
@@ -73,7 +83,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') return;
       const reg = await navigator.serviceWorker.ready;
-      const vapid = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
+      const vapid = (import.meta.env.VITE_VAPID_PUBLIC_KEY || import.meta.env.VITE_SUPABASE_PUBLIC_KEY) as string | undefined;
       if (!vapid) {
         alert('VAPID public key belum dikonfigurasi (VITE_VAPID_PUBLIC_KEY).');
         return;
