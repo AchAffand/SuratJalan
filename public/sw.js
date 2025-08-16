@@ -11,8 +11,9 @@ self.addEventListener('push', (event) => {
   const title = payload.title || 'Notifikasi';
   const options = {
     body: payload.body || '',
-    icon: payload.icon || '/icon-192.png',
-    badge: payload.badge || '/icon-192.png',
+    // Only set icon/badge if provided in the payload to avoid 404s when assets are missing
+    ...(payload.icon ? { icon: payload.icon } : {}),
+    ...(payload.badge ? { badge: payload.badge } : {}),
     data: { url: payload.url || '/', meta: payload.meta || null },
     tag: payload.tag || undefined,
     renotify: !!payload.renotify,

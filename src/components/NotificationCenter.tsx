@@ -56,6 +56,16 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
 
   // Helpers for Web Push subscription
   const urlBase64ToUint8Array = (base64String: string) => {
+    // Support hex strings too (fallback if user provides hex instead of base64-url)
+    const isHex = /^[0-9a-fA-F]+$/.test(base64String.replace(/^0x/, '')) && base64String.replace(/^0x/, '').length % 2 === 0;
+    if (isHex) {
+      const hex = base64String.replace(/^0x/, '');
+      const bytes = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < hex.length; i += 2) {
+        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+      }
+      return bytes;
+    }
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
     const rawData = atob(base64);
@@ -73,7 +83,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') return;
       const reg = await navigator.serviceWorker.ready;
-      const vapid = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
+      const vapid = (import.meta.env.VITE_VAPID_PUBLIC_KEY || import.meta.env.VITE_SUPABASE_PUBLIC_KEY) as string | undefined;
       if (!vapid) {
         alert('VAPID public key belum dikonfigurasi (VITE_VAPID_PUBLIC_KEY).');
         return;
@@ -90,6 +100,21 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
       reg.showNotification('Notifikasi Diaktifkan', { body: 'Anda akan menerima notifikasi realtime.', data: { url: '/pengiriman' } });
     } catch (err) {
       console.error('Enable web push error', err);
+    }
+  };
+
+  const disableWebPush = async () => {
+    try {
+      if (!('serviceWorker' in navigator)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        try { await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint); } catch {}
+        await sub.unsubscribe();
+      }
+      alert('Push notification dimatikan untuk perangkat ini.');
+    } catch (err) {
+      console.error('Disable web push error', err);
     }
   };
 
@@ -673,6 +698,20 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
                   className="px-3 py-1 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
                 >
                   Tandai Semua Dibaca
+                </button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={enableWebPush}
+                  className="flex-1 px-3 py-1 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 transition-colors"
+                >
+                  Aktifkan Push
+                </button>
+                <button
+                  onClick={disableWebPush}
+                  className="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors"
+                >
+                  Matikan Push
                 </button>
               </div>
             </div>
