@@ -3,6 +3,8 @@ import { DeliveryNote } from '../types';
 import { formatWeight } from '../utils/format';
 import { PushNotificationManager } from './PushNotificationManager';
 import { MainMenu } from './MainMenu';
+import { SearchAndFilter } from './SearchAndFilter';
+import { DeliveryNoteCard } from './DeliveryNoteCard';
 
 interface DashboardStats {
   total: number;
@@ -12,7 +14,7 @@ interface DashboardStats {
   totalWeight: number;
 }
 
-interface DashboardProps {
+interface NewDashboardProps {
   stats: DashboardStats;
   activeStatus: string;
   onStatClick: (status: string) => void;
@@ -20,18 +22,31 @@ interface DashboardProps {
   onViewChange: (view: string) => void;
   onPrintSuratJalan: () => void;
   onNavigateToPengiriman: () => void;
+  notes: DeliveryNote[];
+  searchTerm: string;
+  onSearchChange: (term: string) => void;
+  onEditNote: (note: DeliveryNote) => void;
+  onDeleteNote: (id: string) => void;
+  onAddWeight: (note: DeliveryNote) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ 
+export const NewDashboard: React.FC<NewDashboardProps> = ({ 
   stats, 
   activeStatus, 
   onStatClick, 
   currentView, 
   onViewChange, 
   onPrintSuratJalan, 
-  onNavigateToPengiriman 
+  onNavigateToPengiriman,
+  notes,
+  searchTerm,
+  onSearchChange,
+  onEditNote,
+  onDeleteNote,
+  onAddWeight,
 }) => {
-  console.log('🏠 Dashboard rendered with currentView:', currentView);
+  console.log('🆕 NewDashboard rendered with currentView:', currentView);
+  
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'menunggu': return 'bg-yellow-500';
@@ -58,6 +73,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Sistem Surat Jalan</h1>
+          <p className="text-gray-600">PT Samudera Berkah Sentosa & CV Mulia Berkah Sentosa</p>
+          <div className="mt-4 inline-flex items-center px-4 py-2 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+            <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+            Server Online
+          </div>
+        </div>
+      </div>
+
       {/* Main Menu - Hanya Menu Baru */}
       <MainMenu
         key={`main-menu-${currentView}`}
@@ -65,6 +92,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onViewChange={onViewChange}
         onPrintSuratJalan={onPrintSuratJalan}
         onNavigateToPengiriman={onNavigateToPengiriman}
+      />
+
+      {/* Search & Filter */}
+      <SearchAndFilter
+        searchTerm={searchTerm}
+        onSearchChange={onSearchChange}
+        statusFilter={activeStatus}
+        onStatusFilterChange={onStatClick}
       />
 
       {/* Push Notification Manager */}
@@ -210,6 +245,34 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Delivery Notes List (moved to bottom) */}
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-4 sm:p-6">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Daftar Surat Jalan</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {notes
+            .filter(n =>
+              (activeStatus === 'all' || n.status === (activeStatus as any)) &&
+              (
+                !searchTerm ||
+                n.deliveryNoteNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                n.driverName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                n.vehiclePlate?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                n.destination?.toLowerCase().includes(searchTerm.toLowerCase())
+              )
+            )
+            .map(note => (
+              <DeliveryNoteCard
+                key={note.id}
+                note={note}
+                onEdit={onEditNote}
+                onDelete={onDeleteNote}
+                onAddWeight={onAddWeight}
+              />
+            ))}
+        </div>
+      </div>
     </div>
   );
 };
+

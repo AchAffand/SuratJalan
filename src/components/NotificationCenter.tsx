@@ -2,19 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { DeliveryNote } from '../types';
 import { formatWeight, formatDate } from '../utils/format';
 import { supabase } from '../lib/supabase';
+import { usePushNotifications } from '../hooks/usePushNotifications';
+import { useNotificationPreferences } from '../hooks/useNotificationPreferences';
 import { 
   Bell, AlertTriangle, CheckCircle, Clock, 
   Truck, MapPin, Users, DollarSign, X,
   Settings, Filter, Search, Eye, EyeOff,
-  RefreshCw, Volume2, VolumeX, Zap
+  RefreshCw, Volume2, VolumeX, Zap, Smartphone,
+  BarChart3, Calendar, Timer, Shield, Star,
+  TrendingUp, Activity, Target, Award
 } from 'lucide-react';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
-import 'dayjs/locale/id';
-
-// Configure dayjs with relative time plugin
-dayjs.extend(relativeTime);
-dayjs.locale('id');
+import dayjs from '../lib/dayjs';
 
 interface Notification {
   id: string;
@@ -45,6 +43,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [lastSnapshotKey, setLastSnapshotKey] = useState<string>('');
+  const [showPushSettings, setShowPushSettings] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(false);
   const DISMISSED_KEY = 'sj_notifications_dismissed_v1';
   const READ_KEY = 'sj_notifications_read_v1';
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
@@ -53,6 +54,26 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
   const [readIds, setReadIds] = useState<Set<string>>(() => {
     try { return new Set<string>(JSON.parse(localStorage.getItem(READ_KEY) || '[]')); } catch { return new Set(); }
   });
+
+  // Push notifications hook
+  const { 
+    isSupported: pushSupported, 
+    permission: pushPermission, 
+    isSubscribed: pushSubscribed,
+    showLocalNotification,
+    sendBatchNotifications
+  } = usePushNotifications();
+
+  // Notification preferences hook
+  const {
+    preferences,
+    analytics,
+    scheduledNotifications,
+    savePreferences,
+    updateAnalytics,
+    shouldSendNotification,
+    checkScheduledNotifications
+  } = useNotificationPreferences();
 
   // Helpers for Web Push subscription
   const urlBase64ToUint8Array = (base64String: string) => {
@@ -114,6 +135,20 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
         priority: 'medium',
         category: 'delivery',
         metadata: { newDeliveries }
+      });
+    }
+
+    // Add a default system notification if no other notifications
+    if (newNotifications.length === 0) {
+      newNotifications.push({
+        id: 'welcome-notification',
+        type: 'info',
+        title: 'Selamat Datang di Sistem Surat Jalan',
+        message: 'Sistem notifikasi aktif. Anda akan menerima update realtime tentang pengiriman.',
+        timestamp: new Date().toISOString(),
+        read: false,
+        priority: 'low',
+        category: 'system'
       });
     }
 
@@ -264,70 +299,190 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
       });
     }
 
-    // Add system notifications
-    newNotifications.push({
-      id: 'system-health',
-      type: 'success',
-      title: 'Sistem Berjalan Normal',
-      message: 'Semua layanan berfungsi dengan baik',
-      timestamp: new Date().toISOString(),
-      read: false,
-      priority: 'low',
-      category: 'system'
-    });
+    // Add system health notification only if there are other notifications
+    if (newNotifications.length > 0) {
+      newNotifications.push({
+        id: 'system-health',
+        type: 'success',
+        title: 'Sistem Berjalan Normal',
+        message: 'Semua layanan berfungsi dengan baik',
+        timestamp: new Date().toISOString(),
+        read: false,
+        priority: 'low',
+        category: 'system'
+      });
+    }
 
     // Apply persistence: filter out dismissed and mark read as stored
-    const afterDismiss = newNotifications.filter(n => !dismissedIds.has(n.id))
+    const afterDismiss = newNotifications
+      .filter(n => !dismissedIds.has(n.id))
       .map(n => ({ ...n, read: readIds.has(n.id) || n.read }));
 
     const snapshotKey = afterDismiss.map(n => n.id).sort().join('|');
     setLastSnapshotKey(snapshotKey);
+    // Merge snapshot-driven notifications with existing realtime (rt-*) items
     setNotifications(prev => {
-      if (prev.map(n => n.id).sort().join('|') === snapshotKey) return prev;
-      return afterDismiss;
+      // Keep realtime notifications that were appended from Supabase events
+      const realtimeItems = prev.filter(n => n.id.startsWith('rt-') && !dismissedIds.has(n.id));
+      // Avoid duplicates between realtime and snapshot lists
+      const merged = [
+        ...realtimeItems,
+        ...afterDismiss.filter(n => !realtimeItems.some(r => r.id === n.id)),
+      ];
+      return merged;
     });
   }, [notes, dismissedIds, readIds]);
 
   // Realtime append notifications
   useEffect(() => {
+    console.log('🔄 Real-time events received:', newEvents);
     if (!newEvents || newEvents.length === 0) return;
+    
     setNotifications(prev => {
       const next = [...prev];
       newEvents.forEach(ev => {
         const id = `rt-${ev.type}-${ev.new?.id || ev.old?.id || ev.at}`;
         if (dismissedIds.has(id)) return;
         if (next.some(n => n.id === id)) return;
+        
+        let notification;
         if (ev.type === 'INSERT') {
-          next.unshift({
+          notification = {
             id,
-            type: 'success',
+            type: 'success' as const,
             title: 'Surat Jalan Baru Dibuat',
             message: `${ev.new?.delivery_note_number || 'Surat Jalan baru'} berhasil dibuat`,
             timestamp: new Date(ev.at).toISOString(),
             read: false,
-            priority: 'medium',
-            category: 'delivery',
+            priority: 'medium' as const,
+            category: 'delivery' as const,
             actionUrl: '/pengiriman',
             metadata: { note: ev.new }
-          });
+          };
         } else if (ev.type === 'UPDATE') {
-          next.unshift({
-            id,
-            type: 'info',
-            title: 'Surat Jalan Diperbarui',
-            message: `${ev.new?.delivery_note_number || 'Surat Jalan'} diperbarui`,
-            timestamp: new Date(ev.at).toISOString(),
-            read: false,
-            priority: 'low',
-            category: 'delivery',
-            actionUrl: '/pengiriman',
-            metadata: { note: ev.new, old: ev.old }
-          });
+          const newObj = ev.new || {};
+          const oldObj = ev.old || {};
+          const changedKeys = Object.keys(newObj).filter(k => newObj[k] !== oldObj[k]);
+
+          // Skip push/local notif for net weight-only updates
+          if (changedKeys.length === 1 && (changedKeys[0] === 'net_weight' || changedKeys[0] === 'netWeight')) {
+            return; // do not create nor push
+          }
+
+          // If status becomes 'selesai', send completion notification with netto
+          if (changedKeys.includes('status') && newObj.status === 'selesai') {
+            const netto = newObj.net_weight ?? newObj.netWeight;
+            const nettoText = typeof netto === 'number' ? `${netto.toLocaleString('id-ID')} kg` : '—';
+            notification = {
+              id,
+              type: 'success' as const,
+              title: 'Surat Jalan Selesai',
+              message: `${newObj.delivery_note_number || 'Surat Jalan'} telah selesai, netto ${nettoText}`,
+              timestamp: new Date(ev.at).toISOString(),
+              read: false,
+              priority: 'medium' as const,
+              category: 'delivery' as const,
+              actionUrl: '/pengiriman',
+              metadata: { note: ev.new, old: ev.old }
+            };
+          } else if (changedKeys.includes('status') && newObj.status !== oldObj.status) {
+            // More specific message when status changes to other states
+            notification = {
+              id,
+              type: 'info' as const,
+              title: 'Status Pengiriman Diperbarui',
+              message: `${newObj.delivery_note_number || 'Surat Jalan'} berubah status menjadi "${newObj.status}"`,
+              timestamp: new Date(ev.at).toISOString(),
+              read: false,
+              priority: 'medium' as const,
+              category: 'delivery' as const,
+              actionUrl: '/pengiriman',
+              metadata: { note: ev.new, old: ev.old }
+            };
+          } else {
+            // Generic update (exclude trivial fields above)
+            notification = {
+              id,
+              type: 'info' as const,
+              title: 'Surat Jalan Diperbarui',
+              message: `${newObj.delivery_note_number || 'Surat Jalan'} diperbarui`,
+              timestamp: new Date(ev.at).toISOString(),
+              read: false,
+              priority: 'low' as const,
+              category: 'delivery' as const,
+              actionUrl: '/pengiriman',
+              metadata: { note: ev.new, old: ev.old }
+            };
+          }
+        }
+        
+        if (notification) {
+          next.unshift(notification);
+          
+          // Send push notification if enabled and subscribed
+          if (pushSupported && pushPermission === 'granted' && pushSubscribed) {
+            console.log('📱 Sending push notification for:', notification.title);
+            sendPushNotification(notification);
+          } else {
+            console.log('❌ Push notification skipped:', {
+              pushSupported,
+              pushPermission,
+              pushSubscribed,
+              title: notification.title
+            });
+          }
         }
       });
       return next;
     });
-  }, [newEvents, dismissedIds]);
+  }, [newEvents, dismissedIds, pushSupported, pushPermission, pushSubscribed]);
+
+  // Enhanced function to send push notifications with preferences and analytics
+  const sendPushNotification = async (notification: Notification) => {
+    try {
+      // Check if notification should be sent based on preferences
+      if (!shouldSendNotification(notification.category, notification.priority)) {
+        console.log(`🚫 Notification blocked by preferences: ${notification.id}`);
+        return;
+      }
+
+      // Check if push notifications are enabled for this category
+      if (!preferences.channels.push) {
+        console.log(`🚫 Push notifications disabled in preferences`);
+        return;
+      }
+
+      const payload = {
+        title: notification.title,
+        body: notification.message,
+        icon: '/icon.svg',
+        url: notification.actionUrl || '/',
+        tag: notification.id,
+        requireInteraction: notification.priority === 'critical',
+        vibrate: preferences.advanced.vibrationEnabled 
+          ? (notification.priority === 'critical' ? [300, 100, 300, 100, 300] : [200, 100, 200])
+          : undefined,
+        silent: !preferences.advanced.soundEnabled,
+        data: {
+          notificationId: notification.id,
+          category: notification.category,
+          priority: notification.priority,
+          metadata: notification.metadata
+        }
+      };
+
+      await showLocalNotification(payload);
+      
+      // Update analytics
+      updateAnalytics('sent', notification.category);
+      
+      console.log(`✅ Push notification sent: ${notification.id}`);
+    } catch (err) {
+      console.error('Error sending push notification:', err);
+      // Update analytics for failed delivery
+      updateAnalytics('dismissed', notification.category);
+    }
+  };
 
   // Auto refresh by listening to page visibility and timer (simulated here by toggling state)
   useEffect(() => {
@@ -389,7 +544,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
       const searchLower = searchTerm.toLowerCase();
       return (
         notification.title.toLowerCase().includes(searchLower) ||
-        notification.message.toLowerCase().includes(searchLower)
+        notification.message.toLowerCase().includes(searchLower) ||
+        notification.category.toLowerCase().includes(searchLower) ||
+        notification.priority.toLowerCase().includes(searchLower)
       );
     }
 
@@ -570,18 +727,61 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
         );
 
       default:
+        // Better presentation for generic UPDATE with metadata.note
+        const note = (metadata && (metadata.note || metadata.new)) || null;
+        const oldNote = metadata && metadata.old ? metadata.old : null;
         return (
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
             <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm text-gray-800">{message}</p>
-              {metadata && (
-                <div className="mt-3 p-3 bg-white rounded border">
-                  <p className="text-xs text-gray-600">Metadata:</p>
-                  <pre className="text-xs text-gray-800 mt-1 overflow-auto">
-                    {JSON.stringify(metadata, null, 2)}
-                  </pre>
+              <p className="text-sm text-gray-800 mb-3">{message}</p>
+              {note ? (
+                <div className="bg-white rounded-lg border p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-medium text-gray-900">{note.delivery_note_number}</p>
+                      <p className="text-sm text-gray-600">{note.destination}</p>
+                      <p className="text-xs text-gray-500">Driver: {note.driver_name} | Kendaraan: {note.vehicle_plate}</p>
+                    </div>
+                    <div className="text-right">
+                      {note.status && (
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(note.status)}`}>
+                          {getStatusText(note.status)}
+                        </span>
+                      )}
+                      {typeof note.net_weight === 'number' && (
+                        <p className="mt-1 text-xs text-gray-600">Netto: {formatWeight(note.net_weight)}</p>
+                      )}
+                    </div>
+                  </div>
+                  {oldNote && (
+                    <div className="mt-4 grid grid-cols-2 gap-4 text-xs text-gray-600">
+                      <div>
+                        <p className="font-semibold text-gray-800 mb-1">Sebelum</p>
+                        <p>Status: {getStatusText(oldNote.status)}</p>
+                        {typeof oldNote.net_weight === 'number' && (
+                          <p>Netto: {formatWeight(oldNote.net_weight)}</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-800 mb-1">Sesudah</p>
+                        <p>Status: {getStatusText(note.status)}</p>
+                        {typeof note.net_weight === 'number' && (
+                          <p>Netto: {formatWeight(note.net_weight)}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
+              ) : (
+                metadata && (
+                  <div className="mt-3 p-3 bg-white rounded border">
+                    <p className="text-xs text-gray-600">Detail:</p>
+                    <pre className="text-xs text-gray-800 mt-1 overflow-auto">
+                      {JSON.stringify(metadata, null, 2)}
+                    </pre>
+                  </div>
+                )
               )}
             </div>
           </div>
@@ -617,25 +817,58 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold text-gray-900">Notifikasi</h3>
               <div className="flex items-center space-x-2">
+                {/* Analytics Button */}
                 <button
-                  onClick={() => setSoundEnabled(!soundEnabled)}
-                  className="p-1 text-gray-500 hover:text-gray-700"
+                  onClick={() => setShowAnalytics(true)}
+                  className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                  title="Analytics Notifikasi"
                 >
-                  {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  <BarChart3 className="w-4 h-4" />
                 </button>
+                
+                {/* Preferences Button */}
                 <button
-                  onClick={() => setAutoRefresh(!autoRefresh)}
-                  className={`p-1 rounded ${autoRefresh ? 'text-blue-600 bg-blue-100' : 'text-gray-500'}`}
+                  onClick={() => setShowPreferences(true)}
+                  className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                  title="Pengaturan Notifikasi"
                 >
-                  <RefreshCw className="w-4 h-4" />
+                  <Settings className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={() => setShowCenter(false)}
-                  className="p-1 text-gray-500 hover:text-gray-700"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+                
+                {/* Push Notification Status */}
+                {pushSupported && (
+                  <button
+                    onClick={() => setShowPushSettings(!showPushSettings)}
+                    className={`p-1 rounded transition-colors ${
+                      pushSubscribed 
+                        ? 'text-green-600 bg-green-100 hover:bg-green-200' 
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                    }`}
+                    title={pushSubscribed ? 'Push notifications aktif' : 'Push notifications nonaktif'}
+                  >
+                    <Smartphone className="w-4 h-4" />
+                  </button>
+                )}
+              
+              <button
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                className="p-1 text-gray-500 hover:text-gray-700"
+              >
+                {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={`p-1 rounded ${autoRefresh ? 'text-blue-600 bg-blue-100' : 'text-gray-500'}`}
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowCenter(false)}
+                className="p-1 text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             </div>
 
             {/* Search and Filter */}
@@ -683,7 +916,20 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
             {filteredNotifications.length === 0 ? (
               <div className="p-6 text-center text-gray-500">
                 <Bell className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                <p>Tidak ada notifikasi</p>
+                <p className="text-sm">
+                  {notifications.length === 0 
+                    ? 'Tidak ada notifikasi' 
+                    : `Tidak ada notifikasi yang sesuai dengan filter "${filter}"`
+                  }
+                </p>
+                {notifications.length > 0 && (
+                  <button
+                    onClick={() => setFilter('all')}
+                    className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Tampilkan semua notifikasi
+                  </button>
+                )}
               </div>
             ) : (
               <div className="divide-y divide-gray-200">
@@ -735,6 +981,56 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
               </div>
             )}
           </div>
+
+          {/* Push Notification Settings Panel */}
+          {showPushSettings && (
+            <div className="border-t border-gray-200 p-4 bg-blue-50">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-blue-900">Push Notifications</h4>
+                <button
+                  onClick={() => setShowPushSettings(false)}
+                  className="text-blue-600 hover:text-blue-800 text-sm"
+                >
+                  Tutup
+                </button>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-blue-700">Status:</span>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    pushSubscribed 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {pushSubscribed ? 'Aktif' : 'Nonaktif'}
+                  </span>
+                </div>
+                
+                {pushSupported && pushPermission !== 'granted' && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await enableWebPush();
+                        setShowPushSettings(false);
+                      } catch (err) {
+                        console.error('Error enabling push notifications:', err);
+                      }
+                    }}
+                    className="w-full bg-blue-600 text-white px-3 py-2 rounded-lg text-xs hover:bg-blue-700 transition-colors"
+                  >
+                    Aktifkan Push Notifications
+                  </button>
+                )}
+                
+                {pushSubscribed && (
+                  <p className="text-xs text-blue-600 text-center">
+                    ✓ Anda akan menerima notifikasi realtime
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Footer */}
           <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
@@ -791,6 +1087,274 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
                  >
                    Tutup
                  </button>
+               </div>
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* Analytics Modal */}
+       {showAnalytics && (
+         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+             <div className="p-6">
+               <div className="flex items-center justify-between mb-6">
+                 <h3 className="text-xl font-bold text-gray-900 flex items-center">
+                   <BarChart3 className="w-6 h-6 mr-2 text-blue-600" />
+                   Analytics Notifikasi
+                 </h3>
+                 <button
+                   onClick={() => setShowAnalytics(false)}
+                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                 >
+                   <X className="w-5 h-5 text-gray-500" />
+                 </button>
+               </div>
+               
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                 <div className="bg-blue-50 p-4 rounded-lg">
+                   <div className="flex items-center justify-between">
+                     <div>
+                       <p className="text-sm font-medium text-blue-700">Total Dikirim</p>
+                       <p className="text-2xl font-bold text-blue-900">{analytics.totalSent}</p>
+                     </div>
+                     <Activity className="w-8 h-8 text-blue-600" />
+                   </div>
+                 </div>
+                 
+                 <div className="bg-green-50 p-4 rounded-lg">
+                   <div className="flex items-center justify-between">
+                     <div>
+                       <p className="text-sm font-medium text-green-700">Tingkat Pengiriman</p>
+                       <p className="text-2xl font-bold text-green-900">{analytics.deliveryRate.toFixed(1)}%</p>
+                     </div>
+                     <Target className="w-8 h-8 text-green-600" />
+                   </div>
+                 </div>
+                 
+                 <div className="bg-yellow-50 p-4 rounded-lg">
+                   <div className="flex items-center justify-between">
+                     <div>
+                       <p className="text-sm font-medium text-yellow-700">Tingkat Klik</p>
+                       <p className="text-2xl font-bold text-yellow-900">{analytics.clickRate.toFixed(1)}%</p>
+                     </div>
+                     <TrendingUp className="w-8 h-8 text-yellow-600" />
+                   </div>
+                 </div>
+                 
+                 <div className="bg-purple-50 p-4 rounded-lg">
+                   <div className="flex items-center justify-between">
+                     <div>
+                       <p className="text-sm font-medium text-purple-700">Tingkat Dismiss</p>
+                       <p className="text-2xl font-bold text-purple-900">{analytics.dismissRate.toFixed(1)}%</p>
+                     </div>
+                     <Award className="w-8 h-8 text-purple-600" />
+                   </div>
+                 </div>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <div className="bg-gray-50 p-4 rounded-lg">
+                   <h4 className="font-semibold text-gray-900 mb-3">Kategori Notifikasi</h4>
+                   <div className="space-y-2">
+                     {Object.entries(analytics.categories).map(([category, stats]) => (
+                       <div key={category} className="flex justify-between items-center">
+                         <span className="text-sm text-gray-600 capitalize">{category}</span>
+                         <div className="flex space-x-2 text-sm">
+                           <span className="text-blue-600">{stats.sent}</span>
+                           <span className="text-green-600">{stats.delivered}</span>
+                           <span className="text-yellow-600">{stats.clicked}</span>
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+                 
+                 <div className="bg-gray-50 p-4 rounded-lg">
+                   <h4 className="font-semibold text-gray-900 mb-3">Distribusi Harian</h4>
+                   <div className="space-y-2 max-h-40 overflow-y-auto">
+                     {Object.entries(analytics.dailyDistribution)
+                       .sort(([a], [b]) => b.localeCompare(a))
+                       .slice(0, 7)
+                       .map(([date, count]) => (
+                       <div key={date} className="flex justify-between items-center">
+                         <span className="text-sm text-gray-600">{dayjs(date).format('DD MMM')}</span>
+                         <span className="text-sm font-medium text-gray-900">{count}</span>
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+               </div>
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* Preferences Modal */}
+       {showPreferences && (
+         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+             <div className="p-6">
+               <div className="flex items-center justify-between mb-6">
+                 <h3 className="text-xl font-bold text-gray-900 flex items-center">
+                   <Settings className="w-6 h-6 mr-2 text-blue-600" />
+                   Pengaturan Notifikasi
+                 </h3>
+                 <button
+                   onClick={() => setShowPreferences(false)}
+                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                 >
+                   <X className="w-5 h-5 text-gray-500" />
+                 </button>
+               </div>
+               
+               <div className="space-y-6">
+                 {/* Categories */}
+                 <div>
+                   <h4 className="font-semibold text-gray-900 mb-3">Kategori Notifikasi</h4>
+                   <div className="grid grid-cols-2 gap-3">
+                     {Object.entries(preferences.categories).map(([category, enabled]) => (
+                       <label key={category} className="flex items-center space-x-2">
+                         <input
+                           type="checkbox"
+                           checked={enabled}
+                           onChange={(e) => savePreferences({
+                             categories: { ...preferences.categories, [category]: e.target.checked }
+                           })}
+                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                         />
+                         <span className="text-sm text-gray-700 capitalize">{category}</span>
+                       </label>
+                     ))}
+                   </div>
+                 </div>
+
+                 {/* Priorities */}
+                 <div>
+                   <h4 className="font-semibold text-gray-900 mb-3">Prioritas Notifikasi</h4>
+                   <div className="grid grid-cols-2 gap-3">
+                     {Object.entries(preferences.priorities).map(([priority, enabled]) => (
+                       <label key={priority} className="flex items-center space-x-2">
+                         <input
+                           type="checkbox"
+                           checked={enabled}
+                           onChange={(e) => savePreferences({
+                             priorities: { ...preferences.priorities, [priority]: e.target.checked }
+                           })}
+                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                         />
+                         <span className="text-sm text-gray-700 capitalize">{priority}</span>
+                       </label>
+                     ))}
+                   </div>
+                 </div>
+
+                 {/* Channels */}
+                 <div>
+                   <h4 className="font-semibold text-gray-900 mb-3">Saluran Notifikasi</h4>
+                   <div className="grid grid-cols-2 gap-3">
+                     {Object.entries(preferences.channels).map(([channel, enabled]) => (
+                       <label key={channel} className="flex items-center space-x-2">
+                         <input
+                           type="checkbox"
+                           checked={enabled}
+                           onChange={(e) => savePreferences({
+                             channels: { ...preferences.channels, [channel]: e.target.checked }
+                           })}
+                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                         />
+                         <span className="text-sm text-gray-700 capitalize">{channel}</span>
+                       </label>
+                     ))}
+                   </div>
+                 </div>
+
+                 {/* Quiet Hours */}
+                 <div>
+                   <h4 className="font-semibold text-gray-900 mb-3">Jam Tenang</h4>
+                   <div className="space-y-3">
+                     <label className="flex items-center space-x-2">
+                       <input
+                         type="checkbox"
+                         checked={preferences.quietHours.enabled}
+                         onChange={(e) => savePreferences({
+                           quietHours: { ...preferences.quietHours, enabled: e.target.checked }
+                         })}
+                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                       />
+                       <span className="text-sm text-gray-700">Aktifkan jam tenang</span>
+                     </label>
+                     
+                     {preferences.quietHours.enabled && (
+                       <div className="grid grid-cols-2 gap-3">
+                         <div>
+                           <label className="block text-sm font-medium text-gray-700 mb-1">Mulai</label>
+                           <input
+                             type="time"
+                             value={preferences.quietHours.start}
+                             onChange={(e) => savePreferences({
+                               quietHours: { ...preferences.quietHours, start: e.target.value }
+                             })}
+                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                           />
+                         </div>
+                         <div>
+                           <label className="block text-sm font-medium text-gray-700 mb-1">Selesai</label>
+                           <input
+                             type="time"
+                             value={preferences.quietHours.end}
+                             onChange={(e) => savePreferences({
+                               quietHours: { ...preferences.quietHours, end: e.target.value }
+                             })}
+                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                           />
+                         </div>
+                       </div>
+                     )}
+                   </div>
+                 </div>
+
+                 {/* Advanced Settings */}
+                 <div>
+                   <h4 className="font-semibold text-gray-900 mb-3">Pengaturan Lanjutan</h4>
+                   <div className="space-y-3">
+                     <label className="flex items-center space-x-2">
+                       <input
+                         type="checkbox"
+                         checked={preferences.advanced.soundEnabled}
+                         onChange={(e) => savePreferences({
+                           advanced: { ...preferences.advanced, soundEnabled: e.target.checked }
+                         })}
+                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                       />
+                       <span className="text-sm text-gray-700">Suara notifikasi</span>
+                     </label>
+                     
+                     <label className="flex items-center space-x-2">
+                       <input
+                         type="checkbox"
+                         checked={preferences.advanced.vibrationEnabled}
+                         onChange={(e) => savePreferences({
+                           advanced: { ...preferences.advanced, vibrationEnabled: e.target.checked }
+                         })}
+                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                       />
+                       <span className="text-sm text-gray-700">Getar notifikasi</span>
+                     </label>
+                     
+                     <label className="flex items-center space-x-2">
+                       <input
+                         type="checkbox"
+                         checked={preferences.frequency.batchSimilar}
+                         onChange={(e) => savePreferences({
+                           frequency: { ...preferences.frequency, batchSimilar: e.target.checked }
+                         })}
+                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                       />
+                       <span className="text-sm text-gray-700">Gabungkan notifikasi serupa</span>
+                     </label>
+                   </div>
+                 </div>
                </div>
              </div>
            </div>

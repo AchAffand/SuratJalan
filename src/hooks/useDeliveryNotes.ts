@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DeliveryNote, DeliveryStats } from '../types';
 import { 
   getDeliveryNotesFromSupabase, 
@@ -6,43 +6,23 @@ import {
   updateDeliveryNoteInSupabase, 
   deleteDeliveryNoteFromSupabase 
 } from '../utils/supabaseStorage';
-import { shouldAutoUpdateStatus } from '../utils/format';
+// Removed shouldAutoUpdateStatus import - no more automatic status updates
 import { supabase } from '../lib/supabase';
+import { useDebouncedCallback } from './useDebounce';
 
 export const useDeliveryNotes = () => {
   const [notes, setNotes] = useState<DeliveryNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const autoUpdateStatuses = (notes: DeliveryNote[]): DeliveryNote[] => {
-    return notes.map(note => {
-      if (note.status === 'menunggu' && shouldAutoUpdateStatus(note.date)) {
-        return {
-          ...note,
-          status: 'dalam-perjalanan' as const,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      return note;
-    });
-  };
+  // Removed autoUpdateStatuses - status updates now only happen when printing
 
   const loadNotes = async () => {
     try {
       setLoading(true);
       setError(null);
       const loadedNotes = await getDeliveryNotesFromSupabase();
-      const updatedNotes = autoUpdateStatuses(loadedNotes);
-      
-      // Update status in database if any status was auto-updated
-      for (const note of updatedNotes) {
-        const original = loadedNotes.find(n => n.id === note.id);
-        if (original && original.status !== note.status) {
-          await updateDeliveryNoteInSupabase(note.id, { status: note.status });
-        }
-      }
-      
-      setNotes(updatedNotes);
+      setNotes(loadedNotes);
     } catch (err) {
       console.error('Error loading notes:', err);
       setError('Gagal memuat data surat jalan. Periksa koneksi internet Anda.');
@@ -53,40 +33,14 @@ export const useDeliveryNotes = () => {
 
   useEffect(() => {
     loadNotes();
-    
-    // Check for status updates every minute
-    const interval = setInterval(async () => {
-      try {
-        const currentNotes = await getDeliveryNotesFromSupabase();
-        const updatedNotes = autoUpdateStatuses(currentNotes);
-        
-        if (JSON.stringify(currentNotes) !== JSON.stringify(updatedNotes)) {
-          setNotes(updatedNotes);
-          for (const note of updatedNotes) {
-            const original = currentNotes.find(n => n.id === note.id);
-            if (original && original.status !== note.status) {
-              await updateDeliveryNoteInSupabase(note.id, { status: note.status });
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error in auto-update:', err);
-      }
-    }, 60000); // Check every minute
-
-    return () => clearInterval(interval);
+    // Removed automatic status update interval - status updates now only happen when printing
   }, []);
 
   const createNote = async (noteData: Omit<DeliveryNote, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
       setError(null);
-      // Auto-set status based on delivery date
-      let status = noteData.status;
-      if (status === 'menunggu' && shouldAutoUpdateStatus(noteData.date)) {
-        status = 'dalam-perjalanan';
-      }
-      
-      const newNote = await addDeliveryNoteToSupabase({ ...noteData, status });
+      // Always create with 'menunggu' status - no automatic status updates
+      const newNote = await addDeliveryNoteToSupabase({ ...noteData, status: 'menunggu' });
       setNotes(prev => [newNote, ...prev]);
       return newNote;
     } catch (err) {
@@ -99,12 +53,24 @@ export const useDeliveryNotes = () => {
   const updateNote = async (id: string, updates: Partial<DeliveryNote>) => {
     try {
       setError(null);
-      // Ambil note lama sebelum update
+      
+      // OPTIMISTIC UPDATE: Update UI immediately for better UX
       const oldNote = notes.find(n => n.id === id);
-      const oldPONumber = oldNote?.poNumber;
+      if (!oldNote) {
+        throw new Error('Note tidak ditemukan');
+      }
+      
+      const optimisticNote = { ...oldNote, ...updates, updatedAt: new Date().toISOString() };
+      setNotes(prev => prev.map(note => note.id === id ? optimisticNote : note));
+      
+      // Prepare for atomic operations
+      const oldPONumber = oldNote.poNumber;
       const newPONumber = updates.poNumber === '-' ? null : updates.poNumber;
+      
+      // Actual database update
       const updatedNote = await updateDeliveryNoteInSupabase(id, updates);
       if (updatedNote) {
+        // Replace optimistic update with server data
         setNotes(prev => prev.map(note => note.id === id ? updatedNote : note));
         // Jika poNumber berubah, update saldo PO lama dan PO baru
         if (oldPONumber !== newPONumber) {
@@ -164,10 +130,26 @@ export const useDeliveryNotes = () => {
       }
       return updatedNote;
     } catch (err) {
-      console.error('Error updating note:', err);
-      setError('Gagal memperbarui surat jalan. Periksa koneksi internet Anda.');
+      console.error('❌ Error updating note:', err);
+      
+      // ROLLBACK: Revert optimistic update on error
+      setNotes(prev => prev.map(note => 
+        note.id === id ? (oldNote || note) : note
+      ));
+      
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Gagal memperbarui surat jalan: ${errorMessage}`);
       throw err;
     }
+  };
+
+  // DEBOUNCED UPDATE: Prevent race conditions from rapid updates
+  const debouncedUpdateNote = useDebouncedCallback(updateNote, 300);
+
+  // BATCH UPDATE: For multiple field updates
+  const batchUpdateNote = async (id: string, updates: Partial<DeliveryNote>) => {
+    // Use regular updateNote for immediate updates that need to be atomic
+    return updateNote(id, updates);
   };
 
   const removeNote = async (id: string) => {
@@ -201,6 +183,8 @@ export const useDeliveryNotes = () => {
     error,
     createNote,
     updateNote,
+    debouncedUpdateNote, // For form inputs that change frequently
+    batchUpdateNote,     // For multiple field updates
     removeNote,
     getStats,
     refreshNotes: loadNotes,

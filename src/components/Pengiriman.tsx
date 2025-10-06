@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, Edit2, Check, X, Loader2, MapPin, ArrowLeft, Calendar, Eye, Truck, User, Package, Clock, CheckCircle, AlertCircle, Search } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import dayjs from 'dayjs';
+import { Plus, Check, X, Loader2, ArrowLeft, Eye, Truck, User, Package, Clock, CheckCircle, AlertCircle, Search } from 'lucide-react';
+import dayjs from '../lib/dayjs';
 import { formatWeight, formatDate, getStatusColor, getStatusText, getStatusIcon } from '../utils/format';
 
 interface Destination {
@@ -20,13 +19,29 @@ interface DeliveryDetail {
   vehiclePlate: string;
   driverName: string;
   deliveryNoteNumber: string;
-  poNumber: string; // Changed from string | null to string since no_po is NOT NULL
+  poNumber: string | null; // FIX: Konsisten dengan DeliveryNote interface
   destination: string;
   netWeight?: number;
   status: 'menunggu' | 'dalam-perjalanan' | 'selesai';
   createdAt: string;
   updatedAt: string;
   notes?: string;
+}
+
+// FIX: Add proper database row type
+interface DatabaseDeliveryNote {
+  id: string;
+  date: string | null;
+  vehicle_plate: string | null;
+  driver_name: string | null;
+  delivery_note_number: string | null;
+  no_po: string | null;
+  destination: string | null;
+  net_weight: number | null;
+  status: 'menunggu' | 'dalam-perjalanan' | 'selesai' | null;
+  created_at: string;
+  updated_at: string;
+  notes: string | null;
 }
 
 const Pengiriman: React.FC = () => {
@@ -38,9 +53,7 @@ const Pengiriman: React.FC = () => {
   const [input, setInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const navigate = useNavigate();
   // State untuk filter bulan
-  const [selectedMonth, setSelectedMonth] = useState<string>('');
   // State untuk detail view
   const [showDetail, setShowDetail] = useState(false);
   const [selectedDestination, setSelectedDestination] = useState<string>('');
@@ -185,7 +198,7 @@ const Pengiriman: React.FC = () => {
     }
 
     // Map database fields to interface fields
-    const mappedNotes: DeliveryDetail[] = (notes || []).map((note: any, index: number) => {
+    const mappedNotes: DeliveryDetail[] = (notes || []).map((note: DatabaseDeliveryNote, index: number) => {
       // Handle case where date might be null or invalid
       const noteDate = note.date || new Date().toISOString().split('T')[0];
       const mapped = {
@@ -194,7 +207,7 @@ const Pengiriman: React.FC = () => {
         vehiclePlate: note.vehicle_plate || '',
         driverName: note.driver_name || '',
         deliveryNoteNumber: note.delivery_note_number || `SJ-${dayjs(noteDate).format('YYYYMMDD')}-${String(index + 1).padStart(3, '0')}`,
-        poNumber: note.no_po || '', // Changed from null to empty string since no_po is NOT NULL
+        poNumber: note.no_po || null, // FIX: Konsisten dengan type definition
         destination: note.destination || '',
         netWeight: note.net_weight || 0,
         status: note.status || 'menunggu',
@@ -223,7 +236,7 @@ const Pengiriman: React.FC = () => {
         console.log('📦 All notes for destination found:', allNotesForDestination?.length || 0);
         
         // Filter by month on client side
-        const filteredNotes = (allNotesForDestination || []).filter((note: any) => {
+        const filteredNotes = (allNotesForDestination || []).filter((note: DatabaseDeliveryNote) => {
           if (!note.date) return false;
           const noteMonth = dayjs(note.date).format('MMMM YYYY');
           const isCorrectMonth = noteMonth === month;
@@ -233,7 +246,7 @@ const Pengiriman: React.FC = () => {
         
         console.log('📊 Filtered notes for month:', filteredNotes.length);
         
-        const fallbackMappedNotes: DeliveryDetail[] = filteredNotes.map((note: any, index: number) => {
+        const fallbackMappedNotes: DeliveryDetail[] = filteredNotes.map((note: DatabaseDeliveryNote, index: number) => {
           const noteDate = note.date || new Date().toISOString().split('T')[0];
           return {
             id: note.id || '',
@@ -241,7 +254,7 @@ const Pengiriman: React.FC = () => {
             vehiclePlate: note.vehicle_plate || '',
             driverName: note.driver_name || '',
             deliveryNoteNumber: note.delivery_note_number || `SJ-${dayjs(noteDate).format('YYYYMMDD')}-${String(index + 1).padStart(3, '0')}`,
-            poNumber: note.no_po || '',
+            poNumber: note.no_po || null, // FIX: Konsisten dengan type definition
             destination: note.destination || '',
             netWeight: note.net_weight || 0,
             status: note.status || 'menunggu',
@@ -287,12 +300,6 @@ const Pengiriman: React.FC = () => {
     setShowModal(true);
   };
 
-  const openEditModal = (dest: Destination) => {
-    setModalMode('edit');
-    setSelected(dest);
-    setInput(dest.name);
-    setShowModal(true);
-  };
 
   const closeModal = () => {
     setShowModal(false);
@@ -323,26 +330,13 @@ const Pengiriman: React.FC = () => {
       }
       closeModal();
       fetchDestinations();
-    } catch (err: any) {
-      setError(err.message || 'Gagal menyimpan alamat');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Gagal menyimpan alamat');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (dest: Destination) => {
-    if (!confirm(`Yakin ingin menghapus alamat "${dest.name}"?`)) return;
-    try {
-      const { error } = await supabase
-        .from('destinations')
-        .delete()
-        .eq('id', dest.id);
-      if (error) throw error;
-      fetchDestinations();
-    } catch (err: any) {
-      setError(err.message || 'Gagal menghapus alamat');
-    }
-  };
 
   // Ambil semua bulan unik dari data rekap
   const allMonths = Array.from(new Set(destinations.map(d => d.bulan))).sort((a, b) => dayjs(b, 'MMMM YYYY').toDate().getTime() - dayjs(a, 'MMMM YYYY').toDate().getTime());
@@ -374,8 +368,6 @@ const Pengiriman: React.FC = () => {
     data.months.some(d => (d.bulan || '').toLowerCase().includes(searchTerm.toLowerCase()))
   );
   
-  // Filter data sesuai bulan yang dipilih (untuk view lama)
-  const filteredDestinations = selectedMonth ? destinations.filter(d => d.bulan === selectedMonth) : destinations;
 
   // Calculate summary statistics for detail view
   const detailStats = {
@@ -414,13 +406,13 @@ const Pengiriman: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-100 via-blue-50 to-white py-10 px-2 sm:px-0">
+    <div className="min-h-screen bg-gradient-to-br from-blue-100 via-cyan-50 to-indigo-50 py-10 px-2 sm:px-0">
       <div className="max-w-7xl mx-auto">
                  {/* Detail View */}
          {showDetail ? (
            <div className="space-y-6 mt-6">
               {/* Hero Header + Stats Wrapper */}
-              <div className="rounded-2xl bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 p-6 border border-white/60 shadow-xl">
+              <div className="rounded-2xl bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 p-6 border border-white/60 shadow-xl">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6">
                   <div>
@@ -472,9 +464,9 @@ const Pengiriman: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-500">Selesai</p>
-                        <p className="text-xl font-bold text-emerald-600">{detailStats.completedDeliveries}</p>
+                        <p className="text-xl font-bold text-blue-600">{detailStats.completedDeliveries}</p>
                       </div>
-                      <CheckCircle className="w-6 h-6 text-emerald-600" />
+                      <CheckCircle className="w-6 h-6 text-blue-600" />
                     </div>
                   </div>
                   <div className="bg-white/80 backdrop-blur-md rounded-xl shadow-xl p-4 border border-white/60">
@@ -615,58 +607,116 @@ const Pengiriman: React.FC = () => {
         ) : (
                      /* Main List View */
            <>
-             <div className="flex items-center justify-between mb-8">
-               <div className="flex items-center space-x-2">
-                 <h1 className="text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent drop-shadow-lg ml-2">Dashboard Pengiriman</h1>
+             <div className="relative mb-12">
+               {/* Background Pattern */}
+               <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 via-cyan-50/20 to-indigo-50/30 rounded-3xl blur-3xl"></div>
+               <div className="absolute top-0 right-0 w-72 h-72 bg-gradient-to-br from-blue-400/20 to-cyan-400/20 rounded-full blur-2xl"></div>
+               <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-cyan-400/20 to-indigo-400/20 rounded-full blur-2xl"></div>
+               
+               {/* Content */}
+               <div className="relative z-10 flex items-center justify-between">
+                 <div className="flex items-center space-x-4">
+                   {/* Icon */}
+                   <div className="p-4 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl shadow-xl">
+                     <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                     </svg>
+                   </div>
+                   
+                   {/* Title */}
+                   <div>
+                     <h1 className="text-4xl sm:text-5xl font-black bg-gradient-to-r from-blue-600 via-cyan-600 to-indigo-600 bg-clip-text text-transparent drop-shadow-2xl tracking-tight">
+                       Dashboard Pengiriman
+                     </h1>
+                     <p className="text-lg text-gray-600 font-medium mt-2">Analisis dan monitoring pengiriman real-time</p>
+                   </div>
+                 </div>
+                 
+                 {/* Stats Badge */}
+                 <div className="hidden lg:flex items-center space-x-4">
+                   <div className="bg-white/80 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-xl border border-blue-200">
+                     <div className="text-center">
+                       <div className="text-2xl font-bold text-blue-600">{destinations.length}</div>
+                       <div className="text-sm text-gray-600 font-medium">Total Alamat</div>
+                     </div>
+                   </div>
+                   <div className="bg-white/80 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-xl border border-cyan-200">
+                     <div className="text-center">
+                       <div className="text-2xl font-bold text-cyan-600">{destinations.length}</div>
+                       <div className="text-sm text-gray-600 font-medium">Total Destinasi</div>
+                     </div>
+                   </div>
+                 </div>
                </div>
              </div>
              
-             {/* View Mode Toggle dan Search */}
-             <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
-               {/* View Mode Toggle */}
-               <div className="flex items-center space-x-2">
-                 <span className="font-semibold text-gray-700">Tampilan:</span>
-                 <div className="flex bg-gray-100 rounded-lg p-1">
-                   <button
-                     onClick={() => setViewMode('monthly')}
-                     className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                       viewMode === 'monthly' 
-                         ? 'bg-white text-blue-600 shadow-sm' 
-                         : 'text-gray-600 hover:text-gray-800'
-                     }`}
-                   >
-                     Per Bulan
-                   </button>
-                   <button
-                     onClick={() => setViewMode('destination')}
-                     className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                       viewMode === 'destination' 
-                         ? 'bg-white text-blue-600 shadow-sm' 
-                         : 'text-gray-600 hover:text-gray-800'
-                     }`}
-                   >
-                     Per Alamat
-                   </button>
-                 </div>
-               </div>
+             {/* Control Panel */}
+             <div className="relative mb-8">
+               {/* Background */}
+               <div className="absolute inset-0 bg-white/60 backdrop-blur-xl rounded-3xl border border-white/20 shadow-2xl"></div>
                
-               {/* Search Bar */}
-               <div className="flex-1 max-w-md">
-                 <div className="relative">
-                   <input
-                     type="text"
-                     placeholder="Cari bulan atau alamat..."
-                     value={searchTerm}
-                     onChange={(e) => setSearchTerm(e.target.value)}
-                     className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                   />
-                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+               {/* Content */}
+               <div className="relative z-10 p-6">
+                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between space-y-6 lg:space-y-0 lg:space-x-8">
+                   {/* View Mode Toggle */}
+                   <div className="flex items-center space-x-4">
+                     <div className="flex items-center space-x-2">
+                       <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                       <span className="font-bold text-gray-800 text-lg">Tampilan:</span>
+                     </div>
+                     <div className="flex bg-gradient-to-r from-blue-100/80 to-cyan-100/80 rounded-2xl p-1.5 border border-blue-200/50 backdrop-blur-sm">
+                       <button
+                         onClick={() => setViewMode('monthly')}
+                         className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 transform ${
+                           viewMode === 'monthly' 
+                             ? 'bg-white text-blue-700 shadow-xl border border-blue-200 scale-105' 
+                             : 'text-blue-600 hover:text-blue-800 hover:bg-white/60 hover:scale-105'
+                         }`}
+                       >
+                         📅 Per Bulan
+                       </button>
+                       <button
+                         onClick={() => setViewMode('destination')}
+                         className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 transform ${
+                           viewMode === 'destination' 
+                             ? 'bg-white text-blue-700 shadow-xl border border-blue-200 scale-105' 
+                             : 'text-blue-600 hover:text-blue-800 hover:bg-white/60 hover:scale-105'
+                         }`}
+                       >
+                         🏢 Per Alamat
+                       </button>
+                     </div>
+                   </div>
+                   
+                   {/* Search Bar */}
+                   <div className="flex-1 max-w-lg">
+                     <div className="relative group">
+                       <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                       <div className="relative">
+                         <input
+                           type="text"
+                           placeholder="🔍 Cari bulan atau alamat..."
+                           value={searchTerm}
+                           onChange={(e) => setSearchTerm(e.target.value)}
+                           className="w-full pl-12 pr-6 py-4 border-2 border-blue-200/50 rounded-2xl focus:ring-4 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-300 bg-white/90 backdrop-blur-sm text-lg font-medium placeholder-gray-500 shadow-lg hover:shadow-xl"
+                         />
+                         <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-blue-500" />
+                       </div>
+                     </div>
+                   </div>
                  </div>
                </div>
              </div>
 
               {/* Konten Utama */}
-              <div className="bg-white/80 rounded-2xl shadow-2xl p-6 backdrop-blur-xl border border-white/40">
+              <div className="relative">
+                {/* Background Effects */}
+                <div className="absolute inset-0 bg-gradient-to-br from-white/90 via-blue-50/30 to-cyan-50/30 rounded-3xl blur-2xl"></div>
+                <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-br from-blue-300/10 to-cyan-300/10 rounded-full blur-3xl"></div>
+                <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-gradient-to-tr from-cyan-300/10 to-indigo-300/10 rounded-full blur-3xl"></div>
+                
+                {/* Content */}
+                <div className="relative z-10 bg-white/70 backdrop-blur-2xl rounded-3xl shadow-2xl p-8 border border-white/30">
                 {loading ? (
                   <div className="flex justify-center py-12"><Loader2 className="animate-spin w-8 h-8 text-blue-500" /></div>
                 ) : error ? (
@@ -676,58 +726,95 @@ const Pengiriman: React.FC = () => {
                     {/* Monthly View */}
                     {viewMode === 'monthly' && (
                       <div className="space-y-6">
-                        <h2 className="text-xl font-bold text-gray-900 mb-4">Rekap Per Bulan</h2>
+                        <div className="flex items-center space-x-3 mb-8">
+                          <div className="p-3 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl shadow-lg">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h2 className="text-2xl font-black text-gray-900">Rekap Per Bulan</h2>
+                            <p className="text-gray-600 font-medium">Analisis pengiriman berdasarkan periode bulanan</p>
+                          </div>
+                        </div>
                         {filteredMonthlyData.length === 0 ? (
                           <div className="text-gray-400 text-center py-8">
                             Tidak ada data untuk pencarian ini.<br />
                             <span className="block mt-2">Coba kata kunci lain.</span>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {filteredMonthlyData.map((monthData) => (
-                              <div key={monthData.month} className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-                                {/* Header */}
-                                <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-4">
-                                  <h3 className="text-lg font-bold text-white">{monthData.month}</h3>
-                                  <div className="flex justify-between items-center mt-2">
-                                    <span className="text-blue-100 text-sm">
-                                      {monthData.destinations.length} Alamat
-                                    </span>
-                                    <span className="text-blue-100 text-sm">
-                                      {monthData.totalDeliveries} Pengiriman
-                                    </span>
-                                  </div>
-                                </div>
-                                {/* Content */}
-                                <div className="p-4">
-                                  <div className="space-y-3">
-                                    {monthData.destinations.map((dest) => (
-                                      <div key={dest.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                        <div className="flex-1">
-                                          <p className="font-medium text-gray-900">{dest.name}</p>
-                                          <p className="text-sm text-gray-600">
-                                            {dest.total_pengiriman} pengiriman • {formatWeight(dest.total_tonase)}
-                                          </p>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                          <button
-                                            onClick={() => handleShowDetail(dest.name, dest.bulan || '')}
-                                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
-                                            title="Lihat Detail"
-                                          >
-                                            <Eye className="w-4 h-4" />
-                                          </button>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                            {filteredMonthlyData.map((monthData, index) => (
+                              <div key={monthData.month} className="group relative">
+                                {/* Card Background Effects */}
+                                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-3xl blur-xl group-hover:blur-2xl transition-all duration-500"></div>
+                                <div className="absolute inset-0 bg-gradient-to-br from-white/90 to-blue-50/30 rounded-3xl border border-white/40 shadow-2xl group-hover:shadow-3xl transition-all duration-500"></div>
+                                
+                                {/* Card Content */}
+                                <div className="relative z-10 overflow-hidden rounded-3xl">
+                                  {/* Header */}
+                                  <div className="relative p-6 bg-gradient-to-br from-blue-500 via-cyan-500 to-indigo-500">
+                                    {/* Header Background Pattern */}
+                                    <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-16 translate-x-16"></div>
+                                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-12 -translate-x-12"></div>
+                                    
+                                    {/* Header Content */}
+                                    <div className="relative z-10">
+                                      <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-xl font-black text-white drop-shadow-lg">{monthData.month}</h3>
+                                        <div className="px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full border border-white/30">
+                                          <span className="text-white text-sm font-bold">#{index + 1}</span>
                                         </div>
                                       </div>
-                                    ))}
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div className="text-center">
+                                          <div className="text-2xl font-black text-blue-100">{monthData.destinations.length}</div>
+                                          <div className="text-xs text-blue-200 font-medium uppercase tracking-wide">Alamat</div>
+                                        </div>
+                                        <div className="text-center">
+                                          <div className="text-2xl font-black text-blue-100">{monthData.totalDeliveries}</div>
+                                          <div className="text-xs text-blue-200 font-medium uppercase tracking-wide">Pengiriman</div>
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
-                                  {/* Summary */}
-                                  <div className="mt-4 pt-4 border-t border-gray-200">
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-sm font-medium text-gray-600">Total Berat:</span>
-                                      <span className="text-lg font-bold text-emerald-600">
-                                        {formatWeight(monthData.totalWeight)}
-                                      </span>
+                                  
+                                  {/* Content */}
+                                  <div className="p-6 bg-white/80 backdrop-blur-sm">
+                                    <div className="space-y-4">
+                                      {monthData.destinations.map((dest) => (
+                                        <div key={dest.id} className="group/item relative">
+                                          <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-cyan-50/50 rounded-2xl opacity-0 group-hover/item:opacity-100 transition-opacity duration-300"></div>
+                                          <div className="relative z-10 flex items-center justify-between p-4 rounded-2xl border border-gray-100 group-hover/item:border-blue-200 transition-all duration-300">
+                                            <div className="flex-1 min-w-0">
+                                              <h4 className="font-bold text-gray-900 text-sm truncate group-hover/item:text-blue-700 transition-colors duration-300">
+                                                {dest.name}
+                                              </h4>
+                                              <p className="text-xs text-gray-600 font-medium mt-1">
+                                                {dest.total_pengiriman} pengiriman • {formatWeight(dest.total_tonase)}
+                                              </p>
+                                            </div>
+                                            <div className="flex items-center space-x-2 ml-4">
+                                              <button
+                                                onClick={() => handleShowDetail(dest.name, dest.bulan || '')}
+                                                className="p-2 text-blue-600 hover:bg-blue-100 rounded-xl transition-all duration-300 transform hover:scale-110 group-hover/item:shadow-lg"
+                                                title="Lihat Detail"
+                                              >
+                                                <Eye className="w-4 h-4" />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    
+                                    {/* Summary */}
+                                    <div className="mt-6 pt-6 border-t border-gradient-to-r from-blue-200 to-cyan-200">
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm font-bold text-gray-700">Total Berat:</span>
+                                        <span className="text-lg font-black text-blue-600">{formatWeight(monthData.totalWeight)}</span>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
@@ -751,7 +838,7 @@ const Pengiriman: React.FC = () => {
                             {filteredDestinationData.map((destData) => (
                               <div key={destData.name} className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
                                 {/* Header */}
-                                <div className="bg-gradient-to-r from-green-500 to-teal-600 p-4">
+                                <div className="bg-gradient-to-r from-blue-500 to-cyan-600 p-4">
                                   <h3 className="text-lg font-bold text-white">{destData.name}</h3>
                                   <div className="flex justify-between items-center mt-2">
                                     <span className="text-green-100 text-sm">
@@ -776,7 +863,7 @@ const Pengiriman: React.FC = () => {
                                         <div className="flex items-center space-x-2">
                                           <button
                                             onClick={() => handleShowDetail(month.name, month.bulan || '')}
-                                            className="p-2 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
+                                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
                                             title="Lihat Detail"
                                           >
                                             <Eye className="w-4 h-4" />
@@ -789,7 +876,7 @@ const Pengiriman: React.FC = () => {
                                   <div className="mt-4 pt-4 border-t border-gray-200">
                                     <div className="flex justify-between items-center">
                                       <span className="text-sm font-medium text-gray-600">Total Berat:</span>
-                                      <span className="text-lg font-bold text-emerald-600">
+                                      <span className="text-lg font-bold text-blue-600">
                                         {formatWeight(destData.totalWeight)}
                                       </span>
                                     </div>
@@ -803,6 +890,7 @@ const Pengiriman: React.FC = () => {
                     )}
                   </>
                 )}
+                </div>
               </div>
             </>
           )}

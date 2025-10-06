@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DeliveryNote } from '../types';
-import { shouldAutoUpdateStatus } from '../utils/format';
+// Removed shouldAutoUpdateStatus import - no more automatic status updates
 import { X, Save, Truck, AlertCircle } from 'lucide-react';
 import { getPurchaseOrdersFromSupabase } from '../utils/supabaseStorage';
 import { supabase } from '../lib/supabase';
@@ -26,6 +26,9 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
     status: note?.status || 'menunggu' as const,
     notes: note?.notes || '',
     netWeight: note?.netWeight || undefined,
+    hasSeal: note?.hasSeal || false,
+    sealNumbers: note?.sealNumbers || [],
+    company: note?.company || 'sbs',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -36,6 +39,8 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
     total_tonnage: number;
     remaining_tonnage: number;
     status: string;
+    buyer_name?: string | null;
+    buyer_address?: string | null;
   }[]>([]);
   const [poLoading, setPoLoading] = useState(true);
   const [poError, setPoError] = useState<string | null>(null);
@@ -44,6 +49,7 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
   const [destinationOptions, setDestinationOptions] = useState<string[]>([]);
   const [destinationLoading, setDestinationLoading] = useState(true);
   const [destinationError, setDestinationError] = useState<string | null>(null);
+  const [newSealInput, setNewSealInput] = useState('');
 
   useEffect(() => {
     setPoLoading(true);
@@ -58,11 +64,16 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
       .from('destinations')
       .select('name')
       .then(({ data, error }) => {
-        if (error) setDestinationError('Gagal memuat alamat tujuan');
-        else setDestinationOptions((data || []).map((d: any) => d.name));
-      })
-      .finally(() => setDestinationLoading(false));
+        if (error) {
+          setDestinationError('Gagal memuat alamat tujuan');
+        } else {
+          setDestinationOptions((data || []).map((d: { name: string }) => d.name));
+        }
+        setDestinationLoading(false);
+      });
   }, []);
+
+
 
   const DESTINATIONS = [
     'NewHope Sidoarjo',
@@ -99,25 +110,21 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
-      // Auto-update status if delivery date is today or past
-      let finalStatus = formData.status;
-      if (finalStatus === 'menunggu' && shouldAutoUpdateStatus(formData.date)) {
-        finalStatus = 'dalam-perjalanan';
-      }
       // Pastikan poNumber null jika Tanpa PO
       const poNumberToSave = formData.poNumber === '-' ? null : formData.poNumber;
-      onSave({ ...formData, status: finalStatus, poNumber: poNumberToSave });
+
+      // Pertahankan status yang dipilih user (jangan paksa 'menunggu')
+      onSave({ ...formData, poNumber: poNumberToSave });
     }
   };
 
-  const handleChange = (field: string, value: string | number | undefined) => {
+  const handleChange = (field: string, value: string | number | boolean | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
   };
 
-  const isDeliveryToday = shouldAutoUpdateStatus(formData.date);
   const canEditWeight = formData.status === 'selesai';
 
   return (
@@ -149,20 +156,7 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-          {/* Auto-status notification */}
-          {isDeliveryToday && formData.status === 'menunggu' && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 sm:p-4 flex items-start space-x-3">
-              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-blue-800">
-                  Status Otomatis Diperbarui
-                </p>
-                <p className="text-xs sm:text-sm text-blue-600">
-                  Karena tanggal pengiriman adalah hari ini atau sudah lewat, status akan otomatis berubah menjadi "Dalam Perjalanan"
-                </p>
-              </div>
-            </div>
-          )}
+          {/* Removed auto-status notification - no more automatic status updates */}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             {/* Date */}
@@ -270,12 +264,21 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
 
             {/* PO Number Dropdown */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Nomor PO *
               </label>
               <select
                 value={formData.poNumber}
-                onChange={(e) => handleChange('poNumber', e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  handleChange('poNumber', value);
+                  if (value && value !== '-') {
+                    const found = purchaseOrders.find(p => p.po_number === value);
+                    if (found && found.buyer_address) {
+                      handleChange('destination', found.buyer_address);
+                    }
+                  }
+                }}
                 className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 border-2 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono text-sm sm:text-base ${
                   errors.poNumber ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:border-gray-300'
                 }`}
@@ -301,6 +304,7 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
                   <span>{errors.poNumber}</span>
                 </p>
               )}
+
             </div>
 
             {/* Net Weight */}
@@ -387,6 +391,191 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
                 <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                 <span>{errors.destination}</span>
               </p>
+            )}
+          </div>
+
+          {/* Company Selection */}
+          <div className="bg-blue-50 p-4 rounded-xl border-2 border-blue-200">
+            <label className="block text-sm font-semibold text-gray-700 mb-3">
+              Pilih Perusahaan
+            </label>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="flex items-center p-3 border-2 rounded-lg cursor-pointer transition-all hover:bg-blue-100">
+                <input
+                  type="radio"
+                  name="company"
+                  value="sbs"
+                  checked={formData.company === 'sbs'}
+                  onChange={(e) => handleChange('company', e.target.value)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                />
+                <div className="ml-3">
+                  <div className="text-sm font-medium text-gray-900">PT. SBS</div>
+                  <div className="text-xs text-gray-500">Samudera Berkah Sentosa</div>
+                </div>
+              </label>
+              
+              <label className="flex items-center p-3 border-2 rounded-lg cursor-pointer transition-all hover:bg-blue-100">
+                <input
+                  type="radio"
+                  name="company"
+                  value="mbs"
+                  checked={formData.company === 'mbs'}
+                  onChange={(e) => handleChange('company', e.target.value)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                />
+                <div className="ml-3">
+                  <div className="text-sm font-medium text-gray-900">CV. MBS</div>
+                  <div className="text-xs text-gray-500">Mulia Berkah Sentosa</div>
+                </div>
+              </label>
+              
+              <label className="flex items-center p-3 border-2 rounded-lg cursor-pointer transition-all hover:bg-blue-100">
+                <input
+                  type="radio"
+                  name="company"
+                  value="perorangan"
+                  checked={formData.company === 'perorangan'}
+                  onChange={(e) => handleChange('company', e.target.value)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                />
+                <div className="ml-3">
+                  <div className="text-sm font-medium text-gray-900">Perorangan</div>
+                  <div className="text-xs text-gray-500">Personal Shipment</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Seal System */}
+          <div className="bg-gray-50 p-4 rounded-xl border-2 border-gray-200">
+            <label className="block text-sm font-semibold text-gray-700 mb-3">
+              Sistem Seal
+            </label>
+            
+            {/* Seal Option */}
+            <div className="mb-4">
+              <div className="flex space-x-4">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="hasSeal"
+                    checked={!formData.hasSeal}
+                    onChange={() => handleChange('hasSeal', false)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                  />
+                  <span className="ml-2 text-sm font-medium text-gray-700">Tanpa Seal</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="hasSeal"
+                    checked={formData.hasSeal}
+                    onChange={() => handleChange('hasSeal', true)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                  />
+                  <span className="ml-2 text-sm font-medium text-gray-700">Menggunakan Seal</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Seal Numbers Input */}
+            {formData.hasSeal && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nomor Seal
+                </label>
+                {/* Chips */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {(formData.sealNumbers || []).map((seal, idx) => (
+                    <span key={`${seal}-${idx}`} className="inline-flex items-center px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-xs sm:text-sm">
+                      <span className="font-mono">{seal}</span>
+                      <button
+                        type="button"
+                        className="ml-2 text-blue-600 hover:text-blue-800"
+                        onClick={() => {
+                          const next = (formData.sealNumbers || []).filter((_, i) => i !== idx);
+                          handleChange('sealNumbers', next);
+                        }}
+                        aria-label="Hapus seal"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* Input + Add */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9,;\n ]*"
+                    value={newSealInput}
+                    onChange={(e) => setNewSealInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const parts = (newSealInput || '')
+                          .split(/[\n,;\s]+/)
+                          .map(s => s.replace(/[^\d]/g, '').trim())
+                          .filter(Boolean);
+                        if (parts.length > 0) {
+                          const merged = [
+                            ...(formData.sealNumbers || []),
+                            ...parts,
+                          ];
+                          // remove empty and dedupe
+                          const unique = Array.from(new Set(merged.filter(Boolean)));
+                          handleChange('sealNumbers', unique);
+                          setNewSealInput('');
+                        }
+                      }
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pasted = e.clipboardData.getData('text') || '';
+                      const parts = pasted
+                        .split(/[\n,;\s]+/)
+                        .map(s => s.replace(/[^\d]/g, '').trim())
+                        .filter(Boolean);
+                      if (parts.length > 0) {
+                        const merged = [
+                          ...(formData.sealNumbers || []),
+                          ...parts,
+                        ];
+                        const unique = Array.from(new Set(merged.filter(Boolean)));
+                        handleChange('sealNumbers', unique);
+                      }
+                    }}
+                    placeholder="Ketik atau tempel: 123, 456 lalu Enter"
+                    className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono text-sm sm:text-base"
+                  />
+                  <button
+                    type="button"
+                    className="px-3 py-2 rounded-xl bg-blue-600 text-white text-sm sm:text-base hover:bg-blue-700"
+                    onClick={() => {
+                      const parts = (newSealInput || '')
+                        .split(/[\n,;\s]+/)
+                        .map(s => s.replace(/[^\d]/g, '').trim())
+                        .filter(Boolean);
+                      if (parts.length > 0) {
+                        const merged = [
+                          ...(formData.sealNumbers || []),
+                          ...parts,
+                        ];
+                        const unique = Array.from(new Set(merged.filter(Boolean)));
+                        handleChange('sealNumbers', unique);
+                        setNewSealInput('');
+                      }
+                    }}
+                  >
+                    Tambah
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">Pisahkan dengan koma, spasi, baris baru, atau tempel dari Excel.</p>
+              </div>
             )}
           </div>
 

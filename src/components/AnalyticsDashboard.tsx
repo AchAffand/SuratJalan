@@ -7,7 +7,7 @@ import {
   PieChart, Activity, Target, Award, Clock,
   ArrowUpRight, ArrowDownRight, Minus
 } from 'lucide-react';
-import dayjs from 'dayjs';
+import dayjs from '../lib/dayjs';
 
 interface AnalyticsDashboardProps {
   notes: DeliveryNote[];
@@ -31,7 +31,7 @@ interface AnalyticsData {
 
 export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, purchaseOrders }) => {
   const [selectedPeriod, setSelectedPeriod] = useState('30days');
-  const [selectedView, setSelectedView] = useState<'overview' | 'detailed' | 'comparison'>('overview');
+  // UNIFIED VIEW: Removed selectedView state - now showing all sections in one page
 
   const analyticsData = useMemo((): AnalyticsData => {
     const now = dayjs();
@@ -185,8 +185,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
       {/* Header Controls */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Analytics Dashboard</h2>
-          <p className="text-gray-600">Comprehensive business insights and performance metrics</p>
+          <h2 className="text-2xl font-bold text-gray-900">Dashboard Analisis</h2>
+          <p className="text-gray-600">Analisis lengkap performa pengiriman, detail operasional, dan perbandingan data</p>
         </div>
         <div className="flex items-center space-x-3">
           <select
@@ -194,26 +194,11 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
             onChange={(e) => setSelectedPeriod(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
-            <option value="7days">Last 7 Days</option>
-            <option value="30days">Last 30 Days</option>
-            <option value="90days">Last 90 Days</option>
-            <option value="1year">Last Year</option>
+            <option value="7days">7 Hari Terakhir</option>
+            <option value="30days">30 Hari Terakhir</option>
+            <option value="90days">90 Hari Terakhir</option>
+            <option value="1year">1 Tahun Terakhir</option>
           </select>
-          <div className="flex bg-gray-100 rounded-lg p-1">
-            {(['overview', 'detailed', 'comparison'] as const).map((view) => (
-              <button
-                key={view}
-                onClick={() => setSelectedView(view)}
-                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                  selectedView === view
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                {view.charAt(0).toUpperCase() + view.slice(1)}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -222,11 +207,11 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Deliveries</p>
+              <p className="text-sm font-medium text-gray-600">Total Pengiriman</p>
               <p className="text-2xl font-bold text-gray-900">{analyticsData.totalDeliveries}</p>
               <p className="text-sm text-green-600 flex items-center mt-1">
                 <TrendingUp className="w-4 h-4 mr-1" />
-                +12.5% from last period
+                +12.5% dari periode sebelumnya
               </p>
             </div>
             <div className="p-3 bg-blue-100 rounded-lg">
@@ -238,11 +223,11 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Weight</p>
+              <p className="text-sm font-medium text-gray-600">Total Berat</p>
               <p className="text-2xl font-bold text-gray-900">{formatWeight(analyticsData.totalWeight)}</p>
               <p className="text-sm text-green-600 flex items-center mt-1">
                 <TrendingUp className="w-4 h-4 mr-1" />
-                +8.3% from last period
+                +8.3% dari periode sebelumnya
               </p>
             </div>
             <div className="p-3 bg-green-100 rounded-lg">
@@ -254,11 +239,11 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Revenue</p>
+              <p className="text-sm font-medium text-gray-600">Pendapatan</p>
               <p className="text-2xl font-bold text-gray-900">{formatCurrency(analyticsData.totalRevenue)}</p>
               <p className="text-sm text-green-600 flex items-center mt-1">
                 <TrendingUp className="w-4 h-4 mr-1" />
-                +15.2% from last period
+                +15.2% dari periode sebelumnya
               </p>
             </div>
             <div className="p-3 bg-yellow-100 rounded-lg">
@@ -270,11 +255,11 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Avg. Daily Deliveries</p>
+              <p className="text-sm font-medium text-gray-600">Rata-rata Pengiriman Harian</p>
               <p className="text-2xl font-bold text-gray-900">{analyticsData.averageDeliveryPerDay.toFixed(1)}</p>
               <p className="text-sm text-green-600 flex items-center mt-1">
                 <TrendingUp className="w-4 h-4 mr-1" />
-                +5.7% from last period
+                +5.7% dari periode sebelumnya
               </p>
             </div>
             <div className="p-3 bg-purple-100 rounded-lg">
@@ -284,14 +269,18 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
         </div>
       </div>
 
-      {/* Detailed Analytics */}
-      {selectedView === 'detailed' && (
+      {/* Detailed Analytics Section */}
+      <div className="space-y-6">
+        <div className="flex items-center space-x-2 mb-4">
+          <BarChart3 className="w-6 h-6 text-blue-600" />
+          <h3 className="text-xl font-bold text-gray-900">Analisis Detail</h3>
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Top Destinations */}
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <MapPin className="w-5 h-5 mr-2 text-blue-600" />
-              Top Destinations
+              Tujuan Teratas
             </h3>
             <div className="space-y-3">
               {analyticsData.topDestinations.map((dest, index) => (
@@ -318,7 +307,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <Truck className="w-5 h-5 mr-2 text-green-600" />
-              Vehicle Utilization
+              Kendaraan Terpakai
             </h3>
             <div className="space-y-3">
               {analyticsData.vehicleUtilization.map((vehicle, index) => (
@@ -345,7 +334,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <Users className="w-5 h-5 mr-2 text-purple-600" />
-              Driver Performance
+              Performa Driver
             </h3>
             <div className="space-y-3">
               {analyticsData.driverPerformance.map((driver, index) => (
@@ -372,7 +361,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
               <PieChart className="w-5 h-5 mr-2 text-orange-600" />
-              Status Distribution
+              Status Distribusi
             </h3>
             <div className="space-y-4">
               {Object.entries(analyticsData.statusDistribution).map(([status, count]) => (
@@ -395,18 +384,22 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Monthly Trends Chart */}
-      {selectedView === 'comparison' && (
+      {/* Comparison Analytics Section */}
+      <div className="space-y-6">
+        <div className="flex items-center space-x-2 mb-4">
+          <PieChart className="w-6 h-6 text-indigo-600" />
+          <h3 className="text-xl font-bold text-gray-900">Perbandingan Data</h3>
+        </div>
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
             <BarChart3 className="w-5 h-5 mr-2 text-indigo-600" />
-            Monthly Trends
+            Perbandingan Per Bulan
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <h4 className="font-medium text-gray-900 mb-4">Deliveries per Month</h4>
+              <h4 className="font-medium text-gray-900 mb-4">Pengiriman Per Bulan</h4>
               <div className="space-y-3">
                 {analyticsData.monthlyTrends.map((trend, index) => (
                   <div key={trend.month} className="flex items-center justify-between">
@@ -425,7 +418,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
               </div>
             </div>
             <div>
-              <h4 className="font-medium text-gray-900 mb-4">Weight per Month</h4>
+              <h4 className="font-medium text-gray-900 mb-4">Berat Terkirim Per Bulan</h4>
               <div className="space-y-3">
                 {analyticsData.monthlyTrends.map((trend, index) => (
                   <div key={trend.month} className="flex items-center justify-between">
@@ -445,7 +438,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ notes, p
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

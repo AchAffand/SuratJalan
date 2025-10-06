@@ -44,7 +44,8 @@ export const addDeliveryNoteToSupabase = async (note: Omit<DeliveryNote, 'id' | 
 
 export const updateDeliveryNoteInSupabase = async (id: string, updates: Partial<DeliveryNote>): Promise<DeliveryNote | null> => {
   try {
-    const dbUpdates: any = {};
+    // FIX: Use proper typing instead of any
+    const dbUpdates: Partial<Database['public']['Tables']['delivery_notes']['Update']> = {};
     
     if (updates.date !== undefined) dbUpdates.date = updates.date;
     if (updates.vehiclePlate !== undefined) dbUpdates.vehicle_plate = updates.vehiclePlate;
@@ -55,6 +56,15 @@ export const updateDeliveryNoteInSupabase = async (id: string, updates: Partial<
     if (updates.netWeight !== undefined) dbUpdates.net_weight = updates.netWeight || null;
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes || null;
+    if (updates.hasSeal !== undefined) dbUpdates.has_seal = updates.hasSeal;
+    if (updates.sealNumbers !== undefined) dbUpdates.seal_numbers = updates.sealNumbers || [];
+    if (updates.company !== undefined) {
+      try {
+        dbUpdates.company = updates.company;
+      } catch (error) {
+        console.warn('Company field not available in database yet:', error);
+      }
+    }
     
     dbUpdates.updated_at = new Date().toISOString();
 
@@ -99,14 +109,23 @@ export const deleteDeliveryNoteFromSupabase = async (id: string): Promise<boolea
 export const getPurchaseOrdersFromSupabase = async (): Promise<{
   id: string;
   po_number: string;
+  po_date: string;
+  product_type: string;
   total_tonnage: number;
+  price_per_ton: number;
+  total_value: number;
+  shipped_tonnage: number;
   remaining_tonnage: number;
   status: string;
+  buyer_name?: string | null;
+  buyer_address?: string | null;
+  created_at: string;
+  updated_at: string;
 }[]> => {
   try {
     const { data, error } = await supabase
       .from('purchase_orders')
-      .select('id, po_number, total_tonnage, remaining_tonnage, status')
+      .select('id, po_number, po_date, product_type, total_tonnage, price_per_ton, total_value, shipped_tonnage, remaining_tonnage, status, buyer_name, buyer_address, created_at, updated_at')
       .order('created_at', { ascending: false });
     if (error) {
       console.error('Error fetching purchase orders:', error);
