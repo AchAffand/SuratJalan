@@ -99,7 +99,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
         console.warn('VAPID public key belum dikonfigurasi. Menggunakan mode lokal saja.');
         // Show local notification instead
         reg.showNotification('Notifikasi Diaktifkan (Mode Lokal)', { 
-          body: 'Anda akan menerima notifikasi lokal saja. Untuk push notifications, konfigurasi VAPID keys.', 
+          body: 'Notifikasi lokal aktif! Untuk push notifications dari server, tambahkan VAPID keys di .env file.', 
           data: { url: '/pengiriman' } 
         });
         return;

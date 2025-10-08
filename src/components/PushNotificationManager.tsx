@@ -252,6 +252,25 @@ export const PushNotificationManager: React.FC = () => {
             </div>
           )}
 
+          {/* VAPID Key Status */}
+          {!import.meta.env.VITE_VAPID_PUBLIC_KEY && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <div className="flex items-start space-x-2">
+                <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5" />
+                <div className="text-sm text-yellow-800">
+                  <p className="font-medium">Mode Lokal Aktif</p>
+                  <p className="text-xs mt-1">
+                    Notifikasi lokal berfungsi. Untuk push notifications dari server, 
+                    tambahkan VAPID keys di file .env:
+                  </p>
+                  <code className="text-xs bg-yellow-100 px-1 rounded mt-1 block">
+                    VITE_VAPID_PUBLIC_KEY=your_key_here
+                  </code>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Info */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <div className="flex items-start space-x-2">
