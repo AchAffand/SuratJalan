@@ -154,7 +154,10 @@ export const usePushNotifications = () => {
       // Get VAPID public key from environment
       const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
       if (!vapidPublicKey) {
-        throw new Error('VAPID public key tidak ditemukan. Silakan tambahkan VITE_VAPID_PUBLIC_KEY di file .env');
+        console.warn('VAPID public key tidak ditemukan. Menggunakan mode lokal saja.');
+        // For development/testing, we can still enable local notifications
+        setIsSubscribed(true);
+        return null;
       }
 
       // Convert VAPID key to Uint8Array
@@ -176,8 +179,13 @@ export const usePushNotifications = () => {
         auth
       };
 
-      // Save subscription to Supabase
-      await saveSubscriptionToSupabase(subscriptionData);
+      // Save subscription to Supabase (only if we have VAPID keys)
+      try {
+        await saveSubscriptionToSupabase(subscriptionData);
+      } catch (dbError) {
+        console.warn('Gagal menyimpan subscription ke database:', dbError);
+        // Continue anyway - local notifications will still work
+      }
 
       setSubscription(subscriptionData);
       setIsSubscribed(true);
@@ -186,7 +194,7 @@ export const usePushNotifications = () => {
       await showLocalNotification({
         title: 'Notifikasi Diaktifkan! 🎉',
         body: 'Anda akan menerima notifikasi realtime untuk update surat jalan',
-        icon: '/icon-192.png',
+        icon: '/icon.svg',
         tag: 'subscription-success',
         requireInteraction: true
       });

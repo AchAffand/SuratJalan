@@ -96,7 +96,12 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notes, o
       const reg = await navigator.serviceWorker.ready;
       const vapid = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
       if (!vapid) {
-        alert('VAPID public key belum dikonfigurasi (VITE_VAPID_PUBLIC_KEY).');
+        console.warn('VAPID public key belum dikonfigurasi. Menggunakan mode lokal saja.');
+        // Show local notification instead
+        reg.showNotification('Notifikasi Diaktifkan (Mode Lokal)', { 
+          body: 'Anda akan menerima notifikasi lokal saja. Untuk push notifications, konfigurasi VAPID keys.', 
+          data: { url: '/pengiriman' } 
+        });
         return;
       }
       const sub = await reg.pushManager.subscribe({
