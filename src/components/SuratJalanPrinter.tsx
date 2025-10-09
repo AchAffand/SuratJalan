@@ -169,6 +169,10 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
             padding: 0; 
             box-sizing: border-box; 
           }
+
+          @media print {
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
     
           body { 
       font-family: 'Century Gothic', Arial, sans-serif;
@@ -212,7 +216,7 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
     .doc-no {
       font-size: 14px;
       font-weight: bold;
-      color: #333;
+      color: #000;
     }
     
     .company {
@@ -246,7 +250,7 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
     
     .company .tagline {
       font-size: 14px;
-      color: #666;
+      color: #000;
       margin-bottom: 0.05in;
     }
     
