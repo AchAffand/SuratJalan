@@ -123,6 +123,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isActive: data.is_active,
         createdAt: data.created_at,
         lastLogin: new Date().toISOString(),
+        customMenuAccess: (data as any).custom_menu_access || [],
       };
 
       // Save to localStorage
