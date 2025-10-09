@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { User, UserRole, AuthState, LoginCredentials } from '../types/user';
 import { hasPermission } from '../utils/rolePermissions';
+import { supabase } from '../lib/supabase';
 
 // Auth Actions
 type AuthAction =
@@ -72,45 +73,7 @@ interface UserContextType extends AuthState {
 // Create Context
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
-// Mock Users Database (In production, this would be from Supabase)
-const MOCK_USERS: User[] = [
-  {
-    id: '1',
-    username: 'admin',
-    name: 'Administrator',
-    role: 'administrator',
-    email: 'admin@ptsamuderaberkahsentosa.com',
-    isActive: true,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    username: 'supervisor',
-    name: 'Supervisor Operasional',
-    role: 'supervisor',
-    email: 'supervisor@ptsamuderaberkahsentosa.com',
-    isActive: true,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '3',
-    username: 'operator',
-    name: 'Operator Pengiriman',
-    role: 'operator',
-    email: 'operator@ptsamuderaberkahsentosa.com',
-    isActive: true,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '4',
-    username: 'driver',
-    name: 'Driver',
-    role: 'driver',
-    email: 'driver@ptsamuderaberkahsentosa.com',
-    isActive: true,
-    createdAt: new Date().toISOString(),
-  },
-];
+// Removed MOCK_USERS. Users are now managed in Supabase table app_users
 
 // User Provider Component
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -137,57 +100,28 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Check custom users first
-      const savedUsers = localStorage.getItem('customUsers');
-      let user = null;
-      
-      if (savedUsers) {
-        const customUsers = JSON.parse(savedUsers);
-        const customUser = customUsers.find((u: any) => u.username === credentials.username && u.role === credentials.role);
-        
-        if (customUser && customUser.password === credentials.password) {
-          user = {
-            id: customUser.id,
-            username: customUser.username,
-            name: customUser.name,
-            role: customUser.role,
-            email: customUser.email || '',
-            isActive: true,
-            createdAt: customUser.createdAt || new Date().toISOString()
-          };
-        }
-      }
+      // Authenticate against Supabase app_users
+      const { data, error } = await supabase
+        .from('app_users')
+        .select('id, username, name, role, email, is_active, created_at, password')
+        .eq('username', credentials.username)
+        .eq('role', credentials.role)
+        .limit(1)
+        .maybeSingle();
 
-      // Fallback to mock users if not found in custom users
-      if (!user) {
-        user = MOCK_USERS.find(
-          u => u.username === credentials.username && u.role === credentials.role
-        );
+      if (error) throw error;
+      if (!data) throw new Error('Username atau role tidak ditemukan');
+      if (!data.is_active) throw new Error('Akun tidak aktif');
+      if (credentials.password !== data.password) throw new Error('Password salah');
 
-        if (!user) {
-          throw new Error('Username atau role tidak ditemukan');
-        }
-
-        // Simple password check (in production, use proper authentication)
-        const validPasswords: Record<UserRole, string> = {
-          administrator: 'admin123',
-          supervisor: 'supervisor123',
-          operator: 'operator123',
-          driver: 'driver123',
-        };
-
-        if (credentials.password !== validPasswords[credentials.role]) {
-          throw new Error('Password salah');
-        }
-      }
-
-      if (!user.isActive) {
-        throw new Error('Akun tidak aktif');
-      }
-
-      // Update last login
-      const updatedUser = {
-        ...user,
+      const updatedUser: User = {
+        id: data.id,
+        username: data.username,
+        name: data.name,
+        role: data.role as UserRole,
+        email: data.email || '',
+        isActive: data.is_active,
+        createdAt: data.created_at,
         lastLogin: new Date().toISOString(),
       };
 

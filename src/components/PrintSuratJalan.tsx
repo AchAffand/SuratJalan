@@ -12,6 +12,7 @@ interface PrintSuratJalanProps {
 export const PrintSuratJalan: React.FC<PrintSuratJalanProps> = ({ onClose }) => {
   const [deliveryNotes, setDeliveryNotes] = useState<DeliveryNote[]>([]);
   const [filteredNotes, setFilteredNotes] = useState<DeliveryNote[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedNote, setSelectedNote] = useState<DeliveryNote | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -20,6 +21,7 @@ export const PrintSuratJalan: React.FC<PrintSuratJalanProps> = ({ onClose }) => 
   // Load delivery notes with status 'menunggu'
   useEffect(() => {
     loadDeliveryNotes();
+    loadPurchaseOrders();
   }, []);
 
   const loadDeliveryNotes = async () => {
@@ -53,6 +55,24 @@ export const PrintSuratJalan: React.FC<PrintSuratJalanProps> = ({ onClose }) => 
       setFilteredNotes([]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadPurchaseOrders = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('purchase_orders')
+        .select('id, po_number, buyer_name, buyer_address, buyer_phone, buyer_email')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading purchase orders:', error);
+        return;
+      }
+
+      setPurchaseOrders(data || []);
+    } catch (error) {
+      console.error('Error loading purchase orders:', error);
     }
   };
 
@@ -124,6 +144,7 @@ export const PrintSuratJalan: React.FC<PrintSuratJalanProps> = ({ onClose }) => 
     return (
       <SuratJalanPrinter
         deliveryNote={selectedNote}
+        purchaseOrders={purchaseOrders}
         onClose={handleClosePrinter}
       />
     );

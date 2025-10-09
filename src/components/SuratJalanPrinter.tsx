@@ -6,13 +6,24 @@ import {
   FileText, AlertCircle
 } from 'lucide-react';
 
+interface PurchaseOrder {
+  id: string;
+  po_number: string;
+  buyer_name?: string | null;
+  buyer_address?: string | null;
+  buyer_phone?: string | null;
+  buyer_email?: string | null;
+}
+
 interface SuratJalanPrinterProps {
   deliveryNote: DeliveryNote;
+  purchaseOrders?: PurchaseOrder[];
   onClose: () => void;
 }
 
 export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
   deliveryNote,
+  purchaseOrders = [],
   onClose,
 }) => {
   const [isPrinting, setIsPrinting] = useState(false);
@@ -44,6 +55,26 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
   }, [deliveryNote]);
 
   const generatePrintContent = () => {
+    // Find PO data for this delivery note
+    const poData = purchaseOrders.find(po => po.po_number === deliveryNote.poNumber);
+    
+    // Function to format address with line breaks every 2 commas
+    const formatAddress = (address: string) => {
+      if (!address) return '';
+      
+      // Split by comma and clean up spaces
+      const parts = address.split(',').map(part => part.trim()).filter(part => part);
+      
+      // Group every 2 parts and join with comma, then add line breaks
+      const formattedParts = [];
+      for (let i = 0; i < parts.length; i += 2) {
+        const group = parts.slice(i, i + 2).join(' , ');
+        formattedParts.push(group);
+      }
+      
+      return formattedParts.join(' ,<br/>');
+    };
+    
     // Ensure all required data is available
     const safeDeliveryNote = {
       deliveryNoteNumber: deliveryNote.deliveryNoteNumber || 'N/A',
@@ -59,7 +90,12 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
       hasSeal: deliveryNote.hasSeal || false,
       sealNumbers: deliveryNote.sealNumbers || [],
       company: deliveryNote.company || 'sbs',
-      items: [] as Array<unknown>
+      items: [] as Array<unknown>,
+      // Add PO data
+      buyerName: poData?.buyer_name || '',
+      buyerAddress: poData?.buyer_address || deliveryNote.destination || 'N/A',
+      buyerPhone: poData?.buyer_phone || '',
+      buyerEmail: poData?.buyer_email || ''
     };
 
     // Debug logging for print content
@@ -231,13 +267,17 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
       flex: 0.7;
       padding: 0.1in;
       font-size: 14px;
-      line-height: 1.4;
+      line-height: 1.3;
     }
     
     .recipient .label {
-            font-weight: bold; 
-      margin-bottom: 0.05in;
+      font-weight: bold; 
+      margin-bottom: 0.08in;
       font-size: 15px;
+    }
+    
+    .recipient div {
+      margin-bottom: 0.02in;
     }
     
     .details {
@@ -350,7 +390,9 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
       <div class="info-section">
         <div class="recipient">
           <div class="label">Kepada Yth,</div>
-          <div>${safeDeliveryNote.destination || 'Alamat tujuan tidak tersedia'}</div>
+          ${safeDeliveryNote.buyerName ? `<div>${safeDeliveryNote.buyerName}</div>` : ''}
+          <div>${formatAddress(safeDeliveryNote.buyerAddress || safeDeliveryNote.destination || 'Alamat tujuan tidak tersedia')}</div>
+          ${safeDeliveryNote.buyerPhone ? `<div>Telp. ${safeDeliveryNote.buyerPhone}</div>` : ''}
         </div>
         
         <div class="details">
@@ -413,6 +455,9 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
   };
 
   const generateExcelContent = () => {
+    // Find PO data for this delivery note
+    const poData = purchaseOrders.find(po => po.po_number === deliveryNote.poNumber);
+    
     const safeDeliveryNote = {
       deliveryNoteNumber: deliveryNote.deliveryNoteNumber || 'N/A',
       createdAt: deliveryNote.createdAt || new Date().toISOString(),
@@ -423,6 +468,11 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
       hasSeal: deliveryNote.hasSeal || false,
       sealNumbers: deliveryNote.sealNumbers || [],
       company: deliveryNote.company || 'sbs',
+      // Add PO data
+      buyerName: poData?.buyer_name || '',
+      buyerAddress: poData?.buyer_address || deliveryNote.destination || 'N/A',
+      buyerPhone: poData?.buyer_phone || '',
+      buyerEmail: poData?.buyer_email || ''
     };
 
     // Debug logging for Excel content
@@ -466,6 +516,23 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
     };
 
     const config = companyConfig[safeDeliveryNote.company];
+
+    // Function to format address with line breaks every 2 commas (for second template)
+    const formatAddressExcel = (address: string) => {
+      if (!address) return '';
+      
+      // Split by comma and clean up spaces
+      const parts = address.split(',').map(part => part.trim()).filter(part => part);
+      
+      // Group every 2 parts and join with comma, then add line breaks
+      const formattedParts = [];
+      for (let i = 0; i < parts.length; i += 2) {
+        const group = parts.slice(i, i + 2).join(' , ');
+        formattedParts.push(group);
+      }
+      
+      return formattedParts.join(' ,<br/>');
+    };
 
     const excelSealHtml = safeDeliveryNote.hasSeal && safeDeliveryNote.sealNumbers.length > 0
       ? (() => {
@@ -687,7 +754,9 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
       <div class="info-section">
         <div class="recipient">
           <div class="label">Kepada Yth,</div>
-          <div>${safeDeliveryNote.destination || 'Alamat tujuan tidak tersedia'}</div>
+          ${safeDeliveryNote.buyerName ? `<div>${safeDeliveryNote.buyerName}</div>` : ''}
+          <div>${formatAddressExcel(safeDeliveryNote.buyerAddress || safeDeliveryNote.destination || 'Alamat tujuan tidak tersedia')}</div>
+          ${safeDeliveryNote.buyerPhone ? `<div>Telp. ${safeDeliveryNote.buyerPhone}</div>` : ''}
         </div>
         
           <div class="details">

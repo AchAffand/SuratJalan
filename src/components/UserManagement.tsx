@@ -12,11 +12,13 @@ import {
   Shield,
   Settings,
   Check,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 import { UserRole, User } from '../types/user';
 import { ROLE_DISPLAY_NAMES, ROLE_DESCRIPTIONS } from '../utils/rolePermissions';
+import { supabase } from '../lib/supabase';
 
 interface UserManagementProps {
   onClose: () => void;
@@ -55,58 +57,37 @@ const UserManagement: React.FC<UserManagementProps> = ({ onClose }) => {
     { id: 'pengiriman', name: 'Pengiriman', description: 'Kelola alamat dan rekap' }
   ];
 
-  // Load users from localStorage
+  // Load users from Supabase
   useEffect(() => {
-    const savedUsers = localStorage.getItem('customUsers');
-    if (savedUsers) {
-      setUsers(JSON.parse(savedUsers));
-    } else {
-      // Default users
-      const defaultUsers: CustomUser[] = [
-        {
-          id: '1',
-          username: 'admin',
-          name: 'Admin Utama',
-          role: 'administrator',
-          password: 'admin123',
-          customMenuAccess: menuOptions.map(m => m.id)
-        },
-        {
-          id: '2',
-          username: 'supervisor',
-          name: 'Supervisor Operasional',
-          role: 'supervisor',
-          password: 'supervisor123',
-          customMenuAccess: ['dashboard', 'analytics', 'operational-reports', 'po-reports', 'purchase-orders', 'pengiriman']
-        },
-        {
-          id: '3',
-          username: 'operator',
-          name: 'Operator Lapangan',
-          role: 'operator',
-          password: 'operator123',
-          customMenuAccess: ['dashboard', 'print', 'operational-reports', 'pengiriman']
-        },
-        {
-          id: '4',
-          username: 'driver',
-          name: 'Supir Handal',
-          role: 'driver',
-          password: 'driver123',
-          customMenuAccess: ['dashboard']
-        }
-      ];
-      setUsers(defaultUsers);
-      localStorage.setItem('customUsers', JSON.stringify(defaultUsers));
-    }
+    const load = async () => {
+      const { data, error } = await supabase
+        .from('app_users')
+        .select('id, username, name, role, email, is_active, created_at, password')
+        .order('created_at', { ascending: false });
+      if (!error) setUsers((data as any) || []);
+    };
+    load();
   }, []);
 
   const saveUsers = (newUsers: CustomUser[]) => {
     setUsers(newUsers);
-    localStorage.setItem('customUsers', JSON.stringify(newUsers));
   };
 
-  const handleAddUser = () => {
+  const resetToDefaultUsers = async () => {
+    if (confirm('Yakin ingin mengembalikan ke akun default? Semua akun custom akan hilang!')) {
+      const defaults = [
+        { username: 'admin', name: 'Administrator', role: 'administrator', password: 'admin123' },
+        { username: 'supervisor', name: 'Supervisor Operasional', role: 'supervisor', password: 'supervisor123' },
+        { username: 'operator', name: 'Operator Pengiriman', role: 'operator', password: 'operator123' },
+        { username: 'driver', name: 'Driver', role: 'driver', password: 'driver123' }
+      ];
+      await supabase.from('app_users').delete().neq('id', '');
+      const { data } = await supabase.from('app_users').insert(defaults).select('*');
+      saveUsers((data as any) || []);
+    }
+  };
+
+  const handleAddUser = async () => {
     if (!formData.username || !formData.name || !formData.password) {
       alert('Semua field harus diisi!');
       return;
@@ -118,16 +99,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ onClose }) => {
       return;
     }
 
-    const newUser: CustomUser = {
-      id: Date.now().toString(),
-      username: formData.username,
-      name: formData.name,
-      password: formData.password,
-      role: formData.role,
-      customMenuAccess: formData.customMenuAccess
-    };
-
-    saveUsers([...users, newUser]);
+    const { data, error } = await supabase
+      .from('app_users')
+      .insert({ username: formData.username, name: formData.name, role: formData.role, password: formData.password })
+      .select('*')
+      .single();
+    if (!error && data) saveUsers([data as any, ...users]);
     setShowAddForm(false);
     resetForm();
   };
@@ -143,27 +120,31 @@ const UserManagement: React.FC<UserManagementProps> = ({ onClose }) => {
     });
   };
 
-  const handleUpdateUser = () => {
+  const handleUpdateUser = async () => {
     if (!editingUser) return;
 
-    const updatedUsers = users.map(u => 
-      u.id === editingUser.id 
-        ? { ...u, ...formData }
-        : u
-    );
-
-    saveUsers(updatedUsers);
+    const { data, error } = await supabase
+      .from('app_users')
+      .update({ username: formData.username, name: formData.name, role: formData.role, password: formData.password })
+      .eq('id', (editingUser as any).id)
+      .select('*')
+      .single();
+    if (!error && data) {
+      const updatedUsers = users.map(u => (u.id === (editingUser as any).id ? (data as any) : u));
+      saveUsers(updatedUsers);
+    }
     setEditingUser(null);
     resetForm();
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
     if (userId === currentUser?.id) {
       alert('Tidak bisa menghapus akun sendiri!');
       return;
     }
 
     if (confirm('Yakin ingin menghapus user ini?')) {
+      await supabase.from('app_users').delete().eq('id', userId);
       const updatedUsers = users.filter(u => u.id !== userId);
       saveUsers(updatedUsers);
     }
@@ -229,13 +210,20 @@ const UserManagement: React.FC<UserManagementProps> = ({ onClose }) => {
 
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
           {/* Add User Button */}
-          <div className="mb-6">
+          <div className="mb-6 flex gap-3">
             <button
               onClick={() => setShowAddForm(true)}
               className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
             >
               <Plus className="w-5 h-5" />
               <span>Tambah User Baru</span>
+            </button>
+            <button
+              onClick={resetToDefaultUsers}
+              className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors flex items-center space-x-2"
+            >
+              <RefreshCw className="w-5 h-5" />
+              <span>Reset ke Default</span>
             </button>
           </div>
 

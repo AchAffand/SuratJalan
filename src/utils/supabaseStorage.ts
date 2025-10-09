@@ -152,13 +152,15 @@ export const getPurchaseOrdersFromSupabase = async (): Promise<{
   status: string;
   buyer_name?: string | null;
   buyer_address?: string | null;
+  buyer_phone?: string | null;
+  buyer_email?: string | null;
   created_at: string;
   updated_at: string;
 }[]> => {
   try {
     const { data, error } = await supabase
       .from('purchase_orders')
-      .select('id, po_number, po_date, product_type, total_tonnage, price_per_ton, total_value, shipped_tonnage, remaining_tonnage, status, buyer_name, buyer_address, created_at, updated_at')
+      .select('id, po_number, po_date, product_type, total_tonnage, price_per_ton, total_value, shipped_tonnage, remaining_tonnage, status, buyer_name, buyer_address, buyer_phone, buyer_email, created_at, updated_at')
       .order('created_at', { ascending: false });
     if (error) {
       console.error('Error fetching purchase orders:', error);
