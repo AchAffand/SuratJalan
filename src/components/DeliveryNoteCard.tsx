@@ -18,6 +18,7 @@ export const DeliveryNoteCard: React.FC<DeliveryNoteCardProps> = ({
 }) => {
   // Validate note data
   if (!note || !note.id || !note.deliveryNoteNumber) {
+    console.error('❌ Invalid delivery note data:', note);
     return (
       <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
         <div className="text-center">
@@ -26,6 +27,15 @@ export const DeliveryNoteCard: React.FC<DeliveryNoteCardProps> = ({
       </div>
     );
   }
+
+  // Debug logging for card rendering
+  console.log('🎴 Rendering delivery note card:', {
+    id: note.id,
+    date: note.date,
+    destination: note.destination,
+    poNumber: note.poNumber,
+    status: note.status
+  });
 
   const canAddWeight = note.status === 'selesai';
 

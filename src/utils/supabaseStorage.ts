@@ -13,7 +13,19 @@ export const getDeliveryNotesFromSupabase = async (): Promise<DeliveryNote[]> =>
       throw error;
     }
 
-    return data ? data.map(dbToDeliveryNote) : [];
+    const mappedNotes = data ? data.map(dbToDeliveryNote) : [];
+    
+    console.log('📋 Loaded delivery notes from database:', {
+      count: mappedNotes.length,
+      sample: mappedNotes.slice(0, 2).map(n => ({
+        id: n.id,
+        date: n.date,
+        destination: n.destination,
+        poNumber: n.poNumber
+      }))
+    });
+
+    return mappedNotes;
   } catch (error) {
     console.error('Error loading delivery notes from Supabase:', error);
     throw error;
@@ -68,6 +80,16 @@ export const updateDeliveryNoteInSupabase = async (id: string, updates: Partial<
     
     dbUpdates.updated_at = new Date().toISOString();
 
+    console.log('🔄 Updating delivery note in database:', {
+      id,
+      updates: {
+        date: updates.date,
+        destination: updates.destination,
+        poNumber: updates.poNumber,
+        status: updates.status
+      }
+    });
+
     const { data, error } = await supabase
       .from('delivery_notes')
       .update(dbUpdates)
@@ -80,7 +102,18 @@ export const updateDeliveryNoteInSupabase = async (id: string, updates: Partial<
       throw error;
     }
 
-    return data ? dbToDeliveryNote(data) : null;
+    const updatedNote = data ? dbToDeliveryNote(data) : null;
+    
+    if (updatedNote) {
+      console.log('✅ Successfully updated delivery note:', {
+        id: updatedNote.id,
+        date: updatedNote.date,
+        destination: updatedNote.destination,
+        poNumber: updatedNote.poNumber
+      });
+    }
+
+    return updatedNote;
   } catch (error) {
     console.error('Error updating delivery note in Supabase:', error);
     throw error;

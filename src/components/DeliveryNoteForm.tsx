@@ -55,7 +55,7 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
     setPoLoading(true);
     getPurchaseOrdersFromSupabase()
       .then((data) => setPurchaseOrders(data))
-      .catch((err) => setPoError('Gagal memuat daftar PO'))
+      .catch(() => setPoError('Gagal memuat daftar PO'))
       .finally(() => setPoLoading(false));
 
     // Fetch destinations from Supabase
@@ -73,16 +73,36 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
       });
   }, []);
 
+  // Update formData when note prop changes (for edit mode)
+  useEffect(() => {
+    if (note) {
+      console.log('🔄 Updating form data for edit mode:', {
+        noteId: note.id,
+        date: note.date,
+        destination: note.destination,
+        poNumber: note.poNumber
+      });
+      
+      setFormData({
+        date: note.date || new Date().toISOString().split('T')[0],
+        vehiclePlate: note.vehiclePlate || '',
+        driverName: note.driverName || '',
+        deliveryNoteNumber: note.deliveryNoteNumber || '',
+        destination: note.destination || '',
+        poNumber: note.poNumber || '',
+        status: note.status || 'menunggu',
+        notes: note.notes || '',
+        netWeight: note.netWeight || undefined,
+        hasSeal: note.hasSeal || false,
+        sealNumbers: note.sealNumbers || [],
+        company: note.company || 'sbs',
+      });
+    }
+  }, [note]);
 
 
-  const DESTINATIONS = [
-    'NewHope Sidoarjo',
-    'NewHope Mojokerto',
-    'NewHope Demak',
-    'NewHope Cirebon',
-    'PT. Panca Patriot Prima',
-    'PT. Sidoagunt Farm',
-  ];
+
+  // Removed unused DESTINATIONS constant - now using dynamic data from Supabase
   // Searchable dropdown logic
   const [destinationSearch, setDestinationSearch] = useState('');
   const filteredDestinations = destinationOptions.filter(d => d.toLowerCase().includes(destinationSearch.toLowerCase()));
@@ -113,8 +133,18 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
       // Pastikan poNumber null jika Tanpa PO
       const poNumberToSave = formData.poNumber === '-' ? null : formData.poNumber;
 
+      const dataToSave = { ...formData, poNumber: poNumberToSave };
+      
+      console.log('💾 Saving delivery note data:', {
+        noteId: note?.id || 'new',
+        date: dataToSave.date,
+        destination: dataToSave.destination,
+        poNumber: dataToSave.poNumber,
+        status: dataToSave.status
+      });
+
       // Pertahankan status yang dipilih user (jangan paksa 'menunggu')
-      onSave({ ...formData, poNumber: poNumberToSave });
+      onSave(dataToSave);
     }
   };
 
@@ -272,7 +302,8 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
                 onChange={(e) => {
                   const value = e.target.value;
                   handleChange('poNumber', value);
-                  if (value && value !== '-') {
+                  // Only auto-fill destination if it's currently empty or if user is creating new note
+                  if (value && value !== '-' && (!formData.destination || !note)) {
                     const found = purchaseOrders.find(p => p.po_number === value);
                     if (found && found.buyer_address) {
                       handleChange('destination', found.buyer_address);
@@ -321,7 +352,7 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
                 type="number"
                 step="0.01"
                 value={formData.netWeight || ''}
-                onChange={(e) => handleChange('netWeight', e.target.value ? parseFloat(e.target.value) : undefined)}
+                onChange={(e) => handleChange('netWeight', e.target.value ? parseFloat(e.target.value) : 0)}
                 placeholder={canEditWeight ? "1500.50" : "Selesaikan pengiriman dulu"}
                 disabled={!canEditWeight}
                 className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 border-2 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm sm:text-base ${
@@ -357,8 +388,13 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
                   errors.destination ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:border-gray-300'
                 }`}
                 autoComplete="off"
-                onFocus={e => setDestinationSearch(formData.destination)}
-                onBlur={e => setTimeout(() => setDestinationSearch(''), 200)}
+                onFocus={() => {
+                  // Only set destinationSearch if it's empty and we have a destination
+                  if (!destinationSearch && formData.destination) {
+                    setDestinationSearch(formData.destination);
+                  }
+                }}
+                onBlur={() => setTimeout(() => setDestinationSearch(''), 200)}
                 disabled={destinationLoading}
               />
               {destinationSearch && (
@@ -368,7 +404,7 @@ export const DeliveryNoteForm: React.FC<DeliveryNoteFormProps> = ({
                   ) : destinationError ? (
                     <div className="px-4 py-2 text-red-400 text-sm">{destinationError}</div>
                   ) : filteredDestinations.length > 0 ? (
-                    filteredDestinations.map((dest, idx) => (
+                    filteredDestinations.map((dest) => (
                       <div
                         key={dest}
                         className="px-4 py-2 cursor-pointer hover:bg-blue-50 text-sm"

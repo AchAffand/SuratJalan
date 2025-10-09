@@ -31,6 +31,15 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
       return;
     }
     
+    // Debug logging for printer
+    console.log('🖨️ Rendering surat jalan printer:', {
+      id: deliveryNote.id,
+      date: deliveryNote.date,
+      destination: deliveryNote.destination,
+      poNumber: deliveryNote.poNumber,
+      status: deliveryNote.status
+    });
+    
     setError(null);
   }, [deliveryNote]);
 
@@ -39,6 +48,7 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
     const safeDeliveryNote = {
       deliveryNoteNumber: deliveryNote.deliveryNoteNumber || 'N/A',
       createdAt: deliveryNote.createdAt || new Date().toISOString(),
+      date: deliveryNote.date || new Date().toISOString().split('T')[0],
       poNumber: deliveryNote.poNumber || 'N/A',
       vehicleNumber: deliveryNote.vehiclePlate || 'N/A',
       driverName: deliveryNote.driverName || 'N/A',
@@ -51,6 +61,15 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
       company: deliveryNote.company || 'sbs',
       items: [] as Array<unknown>
     };
+
+    // Debug logging for print content
+    console.log('🖨️ Generating print content with data:', {
+      deliveryNoteNumber: safeDeliveryNote.deliveryNoteNumber,
+      date: safeDeliveryNote.createdAt,
+      destination: safeDeliveryNote.destination,
+      poNumber: safeDeliveryNote.poNumber,
+      company: safeDeliveryNote.company
+    });
 
     // Company configurations
     const companyConfig = {
@@ -331,11 +350,7 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
       <div class="info-section">
         <div class="recipient">
           <div class="label">Kepada Yth,</div>
-          <div>PT. NEW HOPE JAWA TIMUR - MOJOKERTO</div>
-          <div>NEW HOPE LIUHE GROUP</div>
-          <div>Jl. Wonosari desa Sumber Tanggul</div>
-          <div>Mojokerto 61382</div>
-          <div>Telp. (62-321) 6852666, 6852888, 6852999</div>
+          <div>${safeDeliveryNote.destination || 'Alamat tujuan tidak tersedia'}</div>
         </div>
         
         <div class="details">
@@ -345,7 +360,7 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
           </div>
           <div class="detail-row">
             <div class="detail-label">Tanggal</div>
-            <div class="detail-value">: ${new Date(safeDeliveryNote.createdAt).toLocaleDateString('id-ID')}</div>
+            <div class="detail-value">: ${new Date(safeDeliveryNote.date).toLocaleDateString('id-ID')}</div>
           </div>
           <div class="detail-row">
             <div class="detail-label">No. PO</div>
@@ -409,6 +424,15 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
       sealNumbers: deliveryNote.sealNumbers || [],
       company: deliveryNote.company || 'sbs',
     };
+
+    // Debug logging for Excel content
+    console.log('📊 Generating Excel content with data:', {
+      deliveryNoteNumber: safeDeliveryNote.deliveryNoteNumber,
+      date: safeDeliveryNote.createdAt,
+      destination: safeDeliveryNote.destination,
+      poNumber: safeDeliveryNote.poNumber,
+      company: safeDeliveryNote.company
+    });
 
     // Company configurations
     const companyConfig = {
@@ -663,11 +687,7 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
       <div class="info-section">
         <div class="recipient">
           <div class="label">Kepada Yth,</div>
-          <div>PT. NEW HOPE JAWA TIMUR - MOJOKERTO</div>
-          <div>NEW HOPE LIUHE GROUP</div>
-          <div>Jl. Wonosari desa Sumber Tanggul</div>
-          <div>Mojokerto 61382</div>
-          <div>Telp. (62-321) 6852666, 6852888, 6852999</div>
+          <div>${safeDeliveryNote.destination || 'Alamat tujuan tidak tersedia'}</div>
         </div>
         
           <div class="details">
@@ -751,6 +771,13 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
         throw new Error('Data surat jalan tidak lengkap');
       }
       
+      console.log('🖨️ Starting print process for:', {
+        id: deliveryNote.id,
+        deliveryNoteNumber: deliveryNote.deliveryNoteNumber,
+        date: deliveryNote.date,
+        destination: deliveryNote.destination
+      });
+      
       const printContent = generatePrintContent();
       const printWindow = window.open('', '_blank');
       
@@ -783,6 +810,13 @@ export const SuratJalanPrinter: React.FC<SuratJalanPrinterProps> = ({
       if (!deliveryNote || !deliveryNote.deliveryNoteNumber) {
         throw new Error('Data surat jalan tidak lengkap');
       }
+      
+      console.log('📊 Starting Excel export for:', {
+        id: deliveryNote.id,
+        deliveryNoteNumber: deliveryNote.deliveryNoteNumber,
+        date: deliveryNote.date,
+        destination: deliveryNote.destination
+      });
       
       const excelContent = generateExcelContent();
       const blob = new Blob([excelContent], { type: 'application/vnd.ms-excel' });
