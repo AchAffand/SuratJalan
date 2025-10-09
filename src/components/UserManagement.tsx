@@ -62,9 +62,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ onClose }) => {
     const load = async () => {
       const { data, error } = await supabase
         .from('app_users')
-        .select('id, username, name, role, email, is_active, created_at, password')
+        .select('id, username, name, role, email, is_active, created_at, password, custom_menu_access')
         .order('created_at', { ascending: false });
-      if (!error) setUsers((data as any) || []);
+      if (!error) {
+        const mapped = (data as any[]).map(u => ({...u, customMenuAccess: u.custom_menu_access || []}));
+        setUsers(mapped as any);
+      }
     };
     load();
   }, []);
@@ -101,10 +104,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ onClose }) => {
 
     const { data, error } = await supabase
       .from('app_users')
-      .insert({ username: formData.username, name: formData.name, role: formData.role, password: formData.password })
+      .insert({ username: formData.username, name: formData.name, role: formData.role, password: formData.password, custom_menu_access: formData.customMenuAccess })
       .select('*')
       .single();
-    if (!error && data) saveUsers([data as any, ...users]);
+    if (!error && data) {
+      const mapped: any = { ...data, customMenuAccess: (data as any).custom_menu_access || [] };
+      saveUsers([mapped, ...users]);
+    }
     setShowAddForm(false);
     resetForm();
   };
@@ -125,12 +131,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ onClose }) => {
 
     const { data, error } = await supabase
       .from('app_users')
-      .update({ username: formData.username, name: formData.name, role: formData.role, password: formData.password })
+      .update({ username: formData.username, name: formData.name, role: formData.role, password: formData.password, custom_menu_access: formData.customMenuAccess })
       .eq('id', (editingUser as any).id)
       .select('*')
       .single();
     if (!error && data) {
-      const updatedUsers = users.map(u => (u.id === (editingUser as any).id ? (data as any) : u));
+      const mapped: any = { ...data, customMenuAccess: (data as any).custom_menu_access || [] };
+      const updatedUsers = users.map(u => (u.id === (editingUser as any).id ? mapped : u));
       saveUsers(updatedUsers);
     }
     setEditingUser(null);

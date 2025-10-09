@@ -170,16 +170,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             
             // Untuk role lain, cek custom menu access
             if (user) {
-              const savedUsers = localStorage.getItem('customUsers');
-              if (savedUsers) {
-                const customUsers = JSON.parse(savedUsers);
-                const currentUserData = customUsers.find((u: any) => u.username === user.username);
-                if (currentUserData && currentUserData.customMenuAccess) {
-                  return currentUserData.customMenuAccess.includes(item.id);
-                }
-              }
-              
-              // Fallback ke role permissions default
+              // Baca custom menu access dari objek user (jika sudah dipasang ke context di masa depan)
+              // atau fallback: gunakan default per role
               const accessibleMenuIds = accessibleMenus.map(menu => menu.id);
               return accessibleMenuIds.includes(item.id);
             }

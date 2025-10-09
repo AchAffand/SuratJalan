@@ -103,7 +103,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Authenticate against Supabase app_users
       const { data, error } = await supabase
         .from('app_users')
-        .select('id, username, name, role, email, is_active, created_at, password')
+        .select('id, username, name, role, email, is_active, created_at, password, custom_menu_access')
         .eq('username', credentials.username)
         .eq('role', credentials.role)
         .limit(1)
